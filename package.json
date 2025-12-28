@@ -1,0 +1,101 @@
+{
+  "name": "hospital-management-mysql",
+  "version": "1.0.0",
+  "description": "Darul Shifa Hospital Management System with MySQL and Auto-Update",
+  "main": "main.js",
+  "author": {
+    "name": "Darul Shifa Hospital",
+    "email": "hospital@darulshifa.com"
+  },
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "set NODE_ENV=development && electron .",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win --x64",
+    "build:win32": "electron-builder --win --ia32",
+    "build:all": "electron-builder --win --x64 --ia32",
+    "publish": "electron-builder --win --x64 --publish always",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "keywords": [
+    "hospital",
+    "management",
+    "mysql",
+    "electron",
+    "desktop",
+    "auto-update"
+  ],
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.3.1",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.6.2",
+    "mysql2": "^3.6.5"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.darulshifa.hospital",
+    "productName": "Darul Shifa Hospital Management",
+    "copyright": "Copyright © 2024 Darul Shifa Hospital",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "**/*",
+      "!**/*.md",
+      "!.git",
+      "!.gitignore",
+      "!dist",
+      "!node_modules/@electron/**/*",
+      "node_modules/mysql2/**/*",
+      "node_modules/bcryptjs/**/*",
+      "node_modules/electron-updater/**/*",
+      "node_modules/electron-log/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "logo.png",
+      "requestedExecutionLevel": "requireAdministrator",
+      "publisherName": "Darul Shifa Hospital",
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hospital Management",
+      "installerIcon": "logo.png",
+      "uninstallerIcon": "logo.png",
+      "installerHeaderIcon": "logo.png",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "allowElevation": true
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "your-github-username",
+        "repo": "hospital-management",
+        "private": false,
+        "releaseType": "release"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-github-username/hospital-management.git"
+  }
+}

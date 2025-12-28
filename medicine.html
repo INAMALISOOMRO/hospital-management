@@ -1,0 +1,1967 @@
+<!DOCTYPE html>
+<html lang="en">
+  <button onclick="logout()" style="background: #ff6b6b; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+  Logout
+</button>
+
+<script>
+function logout() {
+  if (confirm('Are you sure you want to logout?')) {
+    // Force clear everything
+    localStorage.clear();
+    
+    // Force reload to login page
+    window.location.replace('index.html');
+  }
+}
+</script>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pharmacy Inventory & Sales Management</title>
+  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.9/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.0/umd/index.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/uuid@8.3.2/dist/umd/uuidv4.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <style>
+    .custom-blue { background-color: #1E3A8A; }
+    .custom-blue-text { color: #1E3A8A; }
+    .card { background-color: #FFFFFF; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .tab-active { background-color: #1E3A8A; color: #FFFFFF; }
+    body, input, select, textarea { color: #000000; }
+    #scanner {
+      width: 100%;
+      max-width: 640px;
+      height: 360px;
+      object-fit: cover;
+      display: block;
+      margin: 0 auto;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+
+// Authentication Check - Add this at the top of your script section
+async function checkAuthentication() {
+  const session = localStorage.getItem('currentSession');
+  
+  if (!session) {
+    alert('Please login first');
+    window.location.href = 'index.html';
+    return;
+  }
+
+  const currentUser = JSON.parse(session);
+  
+  // For patients.html, check if role is reception or admin
+  const requiredRole = 'medical'; // Change to 'medical' for medicine.html
+  
+  if (currentUser.role !== requiredRole && currentUser.role !== 'admin') {
+    alert('Access denied. You do not have permission to access this page.');
+    window.location.href = 'index.html';
+    return;
+  }
+
+  // Display current user info
+  console.log('Logged in as:', currentUser.fullName, '(' + currentUser.role + ')');
+  
+  return currentUser;
+}
+
+// Call this before anything else
+checkAuthentication();
+
+
+
+
+
+
+
+
+
+
+
+
+    const { createClient } = window.supabase;
+    const supabaseClient = createClient(
+      "https://tqaerdiyibtygjlxmfnb.supabase.co",
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRxYWVyZGl5aWJ0eWdqbHhtZm5iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA0MDU2ODMsImV4cCI6MjA2NTk4MTY4M30.ZjP0Gqak1UWsC2DOVdPuQQN5WcxF7o1oTnzMfrEiM78"
+    );
+    const { useState, useEffect, useRef } = React;
+    const ReactDOMClient = ReactDOM;
+
+    class ErrorBoundary extends React.Component {
+      state = { hasError: false, error: null };
+      static getDerivedStateFromError(error) {
+        return { hasError: true, error };
+      }
+      render() {
+        if (this.state.hasError) {
+          return (
+            <div className="p-6">
+              <h1 className="text-2xl font-bold text-red-500">Something went wrong.</h1>
+              <p>{this.state.error?.message || 'An unexpected error occurred.'}</p>
+            </div>
+          );
+        }
+        return this.props.children;
+      }
+    }
+
+    const db = new Dexie('PharmacyDB');
+    db.version(1).stores({
+      medicines: '++id, name, barcode, boxes, tablets_per_box, totalTablets, price_per_tablet, price_per_box, expiry',
+      transactions: '++id, date, items, total',
+      syncQueue: '++id, type, data',
+      users: '++id, fullName, username, role, status',
+      settings: 'key, value'
+    });
+
+    const defaultSettings = {
+      hospitalName: "Darul Shifa Imam Khomeini Hospital",
+      address: "BLock 3, Hazara Town, Brewery Road,Quetta",
+      contact: "0812857135",
+      email: "//",
+      logo: "logo.png",
+      primaryColor: "#1E3A8A"
+    };
+
+    function App() {
+      const [currentSection, setCurrentSection] = useState('Dashboard');
+      const [medicines, setMedicines] = useState([]);
+      const [cart, setCart] = useState([]);
+      const [scanning, setScanning] = useState(false);
+      const [reports, setReports] = useState([]);
+      const [users, setUsers] = useState([]);
+      const [settings, setSettings] = useState(defaultSettings);
+      const [isOnline, setIsOnline] = useState(navigator.onLine);
+      const [searchTerm, setSearchTerm] = useState('');
+      const [searchResults, setSearchResults] = useState([]);
+      const [inventoryFilter, setInventoryFilter] = useState(null);
+      const [barcodeSearchTerm, setBarcodeSearchTerm] = useState('');
+      const [barcodeSearchResults, setBarcodeSearchResults] = useState([]);
+      const [selectedMedicine, setSelectedMedicine] = useState(null);
+      const [showCustomForm, setShowCustomForm] = useState(false);
+      const [customMedicine, setCustomMedicine] = useState({
+        name: '',
+        barcode: '',
+        boxes: 0,
+        tablets_per_box: 0,
+        totalTablets: 0,
+        price_per_tablet: 0,
+        cePerBox: 0,
+        expiry: ''
+      });
+      const barcodeCanvasRef = useRef(null);
+      const qrCodeCanvasRef = useRef(null);
+      const [reportTab, setReportTab] = useState('Sales');
+      const [dateRange, setDateRange] = useState({ start: '', end: '' });
+      const [filteredReports, setFilteredReports] = useState([]);
+      const codeReaderRef = useRef(null);
+      const [editingMedicine, setEditingMedicine] = useState(null);
+      const [formData, setFormData] = useState({
+        name: '',
+        barcode: '',
+        boxes: 0,
+        tablets_per_box: 0,
+        price_per_tablet: 0,
+        price_per_box: 0,
+        expiry: ''
+      });
+
+      const syncData = async () => {
+        if (!navigator.onLine) return;
+        try {
+          const queue = await db.syncQueue.toArray();
+          for (const item of queue) {
+            try {
+              if (item.type === 'addMedicine') {
+                await supabaseClient.from('medicines').insert([item.data]).select();
+              } else if (item.type === 'transaction') {
+                await supabaseClient.from('transactions').insert([item.data]).select();
+              } else if (item.type === 'deleteMedicine') {
+                await supabaseClient.from('medicines').delete().eq('id', item.data.id);
+              } else if (item.type === 'updateMedicine') {
+                await supabaseClient.from('medicines').update(item.data).eq('id', item.data.id);
+              }
+              await db.syncQueue.delete(item.id);
+            } catch (err) {
+              console.error('Sync failed for item:', item, err);
+            }
+          }
+        } catch (err) {
+          console.error('Error syncing data:', err);
+        }
+      };
+
+      useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+
+        const loadData = async () => {
+  try {
+    // Fetch medicines from Supabase
+    const { data: medData, error: medError } = await supabaseClient.from('medicines').select('*');
+    if (medError) {
+      console.error('Error loading medicines:', medError);
+    } else {
+      // Synchronize local Dexie database with Supabase data
+      await db.medicines.clear(); // Clear any existing local data
+      await db.medicines.bulkAdd(medData); // Add all fetched medicines
+      setMedicines(medData || []); // Update state
+    }
+
+    // Load transactions
+    const { data: txData, error: txError } = await supabaseClient.from('transactions').select('*');
+    if (txError) console.error('Error loading transactions:', txError);
+    else {
+      setReports(txData || []);
+      setFilteredReports(txData || []);
+    }
+
+    // Load users
+    const { data: userData, error: userError } = await supabaseClient.from('users').select('*');
+    if (userError) console.error('Error loading users:', userError);
+    else if (!userData || userData.length === 0) {
+      const defaultUser = { full_name: "Administrator", username: "admin", role: "Administrator Bible", status: "Active" };
+      const { data: newUser, error: addError } = await supabaseClient.from('users').insert([defaultUser]).select();
+      if (addError) console.error('Error adding default user:', addError);
+      else setUsers([newUser[0]]);
+    } else {
+      setUsers(userData);
+    }
+
+    // Load settings
+    const { data: settingsData, error: settingsError } = await supabaseClient.from('settings').select('*').eq('key', 'settings').single();
+    if (settingsError && settingsError.code !== 'PGRST116') console.error('Error loading settings:', settingsError);
+    else if (settingsData) setSettings(settingsData.value);
+    else setSettings(defaultSettings);
+  } catch (err) {
+    console.error('Error loading initial data:', err);
+  }
+};
+
+        loadData();
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+          window.removeEventListener('online', handleOnline);
+          window.removeEventListener('offline', handleOffline);
+        };
+      }, []);
+
+      useEffect(() => {
+        if (isOnline) {
+          syncData();
+        }
+      }, [isOnline]);
+
+   useEffect(() => {
+  if (searchTerm) {
+    const results = medicines.filter(medicine =>
+      medicine.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    setSearchResults(results);
+  } else {
+    setSearchResults([]);
+  }
+}, [searchTerm, medicines]);
+
+      useEffect(() => {
+        if (barcodeSearchTerm) {
+          const results = medicines.filter(medicine =>
+            medicine.name.toLowerCase().includes(barcodeSearchTerm.toLowerCase()) ||
+            medicine.barcode?.toLowerCase().includes(barcodeSearchTerm.toLowerCase())
+          );
+          setBarcodeSearchResults(results);
+        } else {
+         setBarcodeSearchResults([]);
+        }
+      }, [barcodeSearchTerm, medicines]);
+
+      useEffect(() => {
+        if (selectedMedicine && barcodeCanvasRef.current && qrCodeCanvasRef.current) {
+          try {
+            if (selectedMedicine.barcode) {
+              JsBarcode(barcodeCanvasRef.current, selectedMedicine.barcode, {
+                format: "CODE128",
+                width: 2,
+                height: 100,
+                displayValue: true
+              });
+            }
+            const medicineData = JSON.stringify({
+              id: selectedMedicine.id,
+              name: selectedMedicine.name,
+              barcode: selectedMedicine.barcode || '',
+              boxes: selectedMedicine.boxes,
+              tablets_per_box: selectedMedicine.tablets_per_box,
+              totalTablets: selectedMedicine.totalTablets,
+              price_per_tablet: selectedMedicine.price_per_tablet,
+              price_per_box: selectedMedicine.price_per_box,
+              expiry: selectedMedicine.expiry
+            });
+            QRCode.toCanvas(qrCodeCanvasRef.current, medicineData, { width: 200 }, (err) => {
+              if (err) console.error('Error generating QR code:', err);
+            });
+          } catch (err) {
+            console.error('Error generating codes:', err);
+          }
+        }
+      }, [selectedMedicine]);
+
+      useEffect(() => {
+        if (dateRange.start && dateRange.end) {
+          const startDate = new Date(dateRange.start);
+          const endDate = new Date(dateRange.end);
+          if (isNaN(startDate) || isNaN(endDate)) {
+            setFilteredReports(reports);
+            return;
+          }
+          const filtered = reports.filter(report => {
+            const reportDate = new Date(report.date);
+            return reportDate >= startDate && reportDate <= endDate;
+          });
+          setFilteredReports(filtered);
+        } else {
+          setFilteredReports(reports);
+        }
+      }, [dateRange, reports]);
+
+      useEffect(() => {
+        if (currentSection === 'AddMedicine') {
+          if (editingMedicine) {
+            setFormData({
+              name: editingMedicine.name,
+              barcode: editingMedicine.barcode || '',
+              boxes: editingMedicine.boxes || 0,
+              tablets_per_box: editingMedicine.tablets_per_box || 0,
+              price_per_tablet: editingMedicine.price_per_tablet || 0,
+              price_per_box: editingMedicine.price_per_box || 0,
+              expiry: editingMedicine.expiry || ''
+            });
+          } else {
+            setFormData({
+              name: '',
+              barcode: '',
+              boxes: '',
+              tablets_per_box: '',
+              price_per_tablet: '',
+              price_per_box: '',
+              expiry: ''
+            });
+          }
+        }
+      }, [currentSection, editingMedicine]);
+
+      const startScanning = async (onScan) => {
+        setScanning(true);
+        if (!codeReaderRef.current) {
+          codeReaderRef.current = new ZXing.BrowserMultiFormatReader();
+        }
+        const codeReader = codeReaderRef.current;
+        
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+          stream.getTracks().forEach(track => track.stop());
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices.filter(device => device.kind === 'videoinput');
+          if (videoDevices.length === 0) {
+            throw new Error('No camera devices found.');
+          }
+          const backCamera = videoDevices.find(device => device.label.toLowerCase().includes('back')) || videoDevices[0];
+          const deviceId = backCamera.deviceId;
+
+          await codeReader.decodeFromVideoDevice(deviceId, 'scanner', (result, err) => {
+            if (result) {
+              onScan(result.getText());
+              codeReader.reset();
+              setScanning(false);
+            }
+            if (err && !(err instanceof ZXing.NotFoundException)) {
+              console.error('Scanning error:', err);
+              alert('Scanning error: ' + err.message);
+              codeReader.reset();
+              setScanning(false);
+            }
+          });
+        } catch (err) {
+          console.error('Failed to start scanning:', err);
+          let errorMessage = err.message;
+          if (err.name === 'NotAllowedError') {
+            errorMessage = 'Camera access denied. Please grant camera permissions.';
+          } else if (err.name === 'NotFoundError') {
+            errorMessage = 'No camera found on this device.';
+          }
+          alert('Failed to start scanning: ' + errorMessage);
+          setScanning(false);
+          if (codeReader) codeReader.reset();
+        }
+      };
+
+      const stopScanning = () => {
+        if (codeReaderRef.current) {
+          codeReaderRef.current.reset();
+          setScanning(false);
+        }
+      };
+
+      const handleScan = async (scannedData) => {
+  try {
+    try {
+      const medicineData = JSON.parse(scannedData);
+      if (medicineData.name && medicineData.price_per_tablet) {
+        const stock = medicineData.totalTablets ?? 0;
+        if (stock <= 0 && medicineData.sellAs !== 'other') {
+          alert(`This medicine (${medicineData.name}) is out of stock.`);
+          return;
+        }
+        const defaultSellAs = 'tablets'; // Could be dynamic if needed
+        const defaultPrice = defaultSellAs === 'tablets' ? (medicineData.price_per_tablet ?? 0) : (defaultSellAs === 'box' ? (medicineData.price_per_box ?? 0) : 0);
+        setCart(prevCart => [
+          ...prevCart,
+          { ...medicineData, cartQuantity: 1, sellAs: defaultSellAs, customPrice: defaultPrice, hasCustomPrice: false }
+        ]);
+        return;
+      }
+    } catch (jsonErr) {
+    }
+
+    const medicine = await db.medicines.where('barcode').equals(scannedData).first();
+    if (!medicine) {
+      alert('Medicine not found.');
+      return;
+    }
+    const stock = medicine.totalTablets ?? 0;
+    if (stock <= 0 && medicine.sellAs !== 'other') {
+      alert(`This medicine (${medicine.name}) is out of stock.`);
+      return;
+    }
+    const defaultSellAs = 'tablets';
+    const defaultPrice = defaultSellAs === 'tablets' ? (medicine.price_per_tablet ?? 0) : (medicine.price_per_box ?? 0);
+    setCart(prevCart => [
+      ...prevCart,
+      { ...medicine, cartQuantity: 1, sellAs: defaultSellAs, customPrice: defaultPrice, hasCustomPrice: false }
+    ]);
+  } catch (err) {
+    console.error('Error handling scan:', err);
+    alert('Error processing scan: ' + err.message);
+  }
+};
+      const printContent = (htmlContent) => {
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+        iframeDoc.open();
+        iframeDoc.write(htmlContent);
+        iframeDoc.close();
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+        setTimeout(() => {
+          document.body.removeChild(iframe);
+        }, 1000);
+      };
+
+      const printCode = (type) => {
+        if (!selectedMedicine) {
+          alert('Please select a medicine or create a custom barcode/QR code to print.');
+          return;
+        }
+        const canvasRef = type === 'barcode' ? barcodeCanvasRef : qrCodeCanvasRef;
+        if (!canvasRef.current) return;
+        const codeDataURL = canvasRef.current.toDataURL('image/png');
+        const htmlContent = `
+          <html>
+            <head>
+              <title>Print ${type === 'barcode' ? 'Barcode' : 'QR Code'}</title>
+              <style>
+                body { font-family: Arial, sans-serif; text-align: center; }
+                .code-container { margin: 20px; }
+                .code-image { width: ${type === 'barcode' ? '300px' : '200px'}; height: auto; }
+              </style>
+            </head>
+            <body>
+              <div class="code-container">
+                <h2>${selectedMedicine.name}</h2>
+                <p>${type === 'barcode' ? 'Barcode: ' + (selectedMedicine.barcode || 'Custom') : 'QR Code (Full Medicine Data)'}</p>
+                <img src="${codeDataURL}" class="code-image" />
+              </div>
+            </body>
+          </html>
+        `;
+        printContent(htmlContent);
+      };
+
+      const printReport = (type) => {
+        const hospitalName = settings.hospitalName || "Pharmacy";
+        const address = settings.address || "";
+        const contact = settings.contact || "";
+        const email = settings.email || "";
+        const logo = settings.logo || "";
+        const primaryColor = settings.primaryColor || "#1E3A8A";
+
+        let content = '';
+        if (type === 'Sales') {
+          const totalSales = filteredReports.reduce((sum, report) => sum + (report.total || 0), 0);
+          content = `
+  <h2>Sales Report</h2>
+  <p>Date Range: ${dateRange.start || 'All'} to ${dateRange.end || 'All'}</p>
+  <p>Total Revenue: PKR ${totalSales.toFixed(2)}</p>
+  <table border="1">
+    <thead>
+      <tr>
+        <th>Date & Time</th>
+        <th>Items</th>
+        <th>Quantity</th>
+        <th>Price/Unit</th>
+        <th>Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filteredReports.map(report => `
+        <tr>
+          <td>${new Date(report.date).toLocaleString()}</td>
+          <td>${report.items.map(item => item.name).join(', ')}</td>
+          <td>${report.items.map(item => `${item.cartQuantity} ${item.sellAs}`).join(', ')}</td>
+          <td>${report.items.map(item => `PKR ${item.customPrice || 0}`).join(', ')}</td>
+          <td>PKR ${(report.total || 0).toFixed(2)}</td>
+        </tr>
+      `).join('')}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4" style="text-align: right; font-weight: bold;">Grand Total:</td>
+        <td style="font-weight: bold;">PKR ${totalSales.toFixed(2)}</td>
+      </tr>
+    </tfoot>
+  </table>
+`;
+        } else if (type === 'Inventory') {
+          const lowStockCount = medicines.filter(m => (m.totalTablets ?? 0) <= (m.tablets_per_box ?? 1)).length;
+          const expiringSoonCount = medicines.filter(m => {
+            const expiry = new Date(m.expiry);
+            const now = new Date();
+            const diffDays = (expiry - now) / (1000 * 60 * 60 * 24);
+            return diffDays <= 7;
+          }).length;
+          content = `
+            <h2>Inventory Report</h2>
+            <p>Total Items: ${medicines.length}</p>
+            <p>Low Stock Items: ${lowStockCount}</p>
+            <p>Expiring Soon: ${expiringSoonCount}</p>
+            <table border="1">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Barcode</th>
+                  <th>Total Tablets</th>
+                  <th>Boxes</th>
+                  <th>Price/Tablet</th>
+                  <th>Price/Box</th>
+                  <th>Expiry</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${medicines.map(medicine => {
+                  const isLowStock = (medicine.totalTablets ?? 0) <= (medicine.tablets_per_box ?? 1);
+                  const expiry = new Date(medicine.expiry);
+                  const now = new Date();
+                  const diffDays = (expiry - now) / (1000 * 60 * 60 * 24);
+                  const isExpiringSoon = diffDays <= 7;
+                  return `
+                    <tr>
+                      <td>${medicine.name}</td>
+                      <td>${medicine.barcode || 'N/A'}</td>
+                      <td>${medicine.totalTablets || 0}</td>
+                      <td>${medicine.boxes || 0}</td>
+                      <td>PKR ${parseFloat(medicine.price_per_tablet || 0).toFixed(2)}</td>
+                      <td>PKR ${parseFloat(medicine.price_per_box || 0).toFixed(2)}</td>
+                      <td>${medicine.expiry || 'N/A'}</td>
+                      <td>
+                        ${isLowStock ? '<span style="color: red;">Low Stock</span>' : ''}
+                        ${isLowStock && isExpiringSoon ? ' | ' : ''}
+                        ${isExpiringSoon ? '<span style="color: orange;">Expiring Soon</span>' : ''}
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          `;
+        } else if (type === 'Analysis') {
+          const totalSales = reports.reduce((sum, report) => sum + (report.total || 0), 0);
+          const filteredSales = filteredReports.reduce((sum, report) => sum + (report.total || 0), 0);
+          const medicineSales = {};
+          filteredReports.forEach(report => {
+            report.items.forEach(item => {
+              if (!medicineSales[item.name]) {
+                medicineSales[item.name] = { quantity: 0, revenue: 0 };
+              }
+              medicineSales[item.name].quantity += item.cartQuantity || 0;
+              medicineSales[item.name].revenue += (item.customPrice || 0) * (item.cartQuantity || 0);
+            });
+          });
+          const topSelling = Object.entries(medicineSales)
+            .sort((a, b) => b[1].quantity - a[1].quantity)
+            .slice(0, 3);
+          const lowStockCount = medicines.filter(m => (m.totalTablets ?? 0) <= (m.tablets_per_box ?? 1)).length;
+          const expiringSoonCount = medicines.filter(m => {
+            const expiry = new Date(m.expiry);
+            const now = new Date();
+            const diffDays = (expiry - now) / (1000 * 60 * 60 * 24);
+            return diffDays <= 7;
+          }).length;
+          content = `
+            <h2>Analysis Report</h2>
+            <h3>Sales Analysis</h3>
+            <p>Total Revenue (All Time): PKR ${totalSales.toFixed(2)}</p>
+            <p>Total Revenue (Selected Period): PKR ${filteredSales.toFixed(2)}</p>
+            <h4>Top Selling Medicines (Selected Period):</h4>
+            <ul>
+              ${topSelling.map(([name, data]) => `
+                <li>${name}: ${data.quantity} units sold, PKR ${data.revenue.toFixed(2)}</li>
+              `).join('')}
+            </ul>
+            <h3>Inventory Analysis</h3>
+            <p>Total Items in Stock: ${medicines.length}</p>
+            <p>Low Stock Items: ${lowStockCount}</p>
+            <p>Expiring Soon: ${expiringSoonCount}</p>
+          `;
+        }
+
+        const htmlContent = `
+          <html>
+            <head>
+              <title>${type} Report</title>
+              <style>
+                body { font-family: Arial, sans-serif; text-align: center; color: #000000; }
+                table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+                th, td { padding: 8px; text-align: left; border: 1px solid #ddd; }
+                h1 { color: ${primaryColor}; }
+                ul { list-style-type: none; padding: 0; }
+              </style>
+            </head>
+            <body>
+              <div style="text-align: center;">
+                <img src="${logo}" alt="Logo" style="width: 50px; height: 50px;" onerror="this.style.display='none'" />
+                <h1>${hospitalName}</h1>
+                <p>${address}</p>
+                <p>${contact} | ${email}</p>
+              </div>
+              ${content}
+            </body>
+          </html>
+        `;
+        printContent(htmlContent);
+      };
+
+      const generateCustomCode = () => {
+        const totalTablets = customMedicine.boxes * customMedicine.tablets_per_box;
+        const newMedicine = {
+          ...customMedicine,
+          totalTablets: totalTablets,
+          barcode: customMedicine.barcode || `CUSTOM${Date.now()}`
+        };
+        setSelectedMedicine(newMedicine);
+        setShowCustomForm(false);
+      };
+
+      const handleEdit = (medicine) => {
+        setEditingMedicine(medicine);
+        setCurrentSection('AddMedicine');
+      };
+
+      const handleDelete = async (id) => {
+        if (window.confirm('Are you sure you want to delete this medicine?')) {
+          try {
+            const { error } = await supabaseClient.from('medicines').delete().eq('id', id);
+            if (error) throw error;
+            setMedicines(medicines.filter(m => m.id !== id));
+            if (isOnline) {
+              await db.syncQueue.add({ type: 'deleteMedicine', data: { id } });
+            }
+          } catch (err) {
+            console.error('Error deleting medicine:', err);
+            alert('Error deleting medicine: ' + err.message);
+          }
+        }
+      };
+
+   const processSale = async () => {
+  try {
+    const hasInvalidOther = cart.some(item => item.sellAs === 'other' && item.customPrice === 0);
+    if (hasInvalidOther) {
+      alert('Please set a price for all "Other" items before completing the sale.');
+      return;
+    }
+    const subtotal = cart.reduce((sum, item) => sum + (item.customPrice * item.cartQuantity), 0);
+    const total = subtotal;
+    const transaction = { date: new Date().toISOString(), items: cart, total };
+    const { data, error } = await supabaseClient.from('transactions').insert([transaction]).select();
+    if (error) throw error;
+    const newTransaction = data[0];
+    setReports([...reports, newTransaction]);
+    setFilteredReports([...filteredReports, newTransaction]);
+
+    // Update medicine stock only for items sold as tablets or boxes
+    for (const item of cart) {
+      if (item.sellAs === 'tablets' || item.sellAs === 'box') {
+        const tabletsSold = item.sellAs === 'box' ? item.cartQuantity * item.tablets_per_box : item.cartQuantity;
+        const newTotalTablets = item.totalTablets - tabletsSold;
+        const tablets_per_box = item.tablets_per_box || 1;
+        const newBoxes = Math.floor(newTotalTablets / tablets_per_box);
+        if (item.id) {
+          await db.medicines.update(item.id, { totalTablets: newTotalTablets, boxes: newBoxes });
+          const { error: updateError } = await supabaseClient.from('medicines').update({
+            totalTablets: newTotalTablets,
+            boxes: newBoxes
+          }).eq('id', item.id);
+          if (updateError) throw updateError;
+        }
+      }
+    }
+
+    const updatedMedicines = await db.medicines.toArray();
+    setMedicines(prevMedicines => {
+      console.log('Previous medicines:', prevMedicines);
+      console.log('Updated medicines:', updatedMedicines);
+      return [...updatedMedicines];
+    });
+
+    setCart([]);
+    generateReceipt(transaction);
+    if (isOnline) {
+      await db.syncQueue.add({ type: 'transaction', data: transaction });
+    }
+  } catch (err) {
+    console.error('Error processing sale:', err);
+    alert('Error processing sale: ' + err.message);
+  }
+};
+      const generateReceipt = (transaction) => {
+        const subtotal = transaction.items.reduce((sum, item) => sum + (item.customPrice * item.cartQuantity), 0);
+       const total = transaction.total;
+        const hospitalName = settings.hospitalName || "Pharmacy";
+        const address = settings.address || "";
+        const contact = settings.contact || "";
+        const email = settings.email || "";
+        const logo = settings.logo || "";
+        const primaryColor = settings.primaryColor || "#FFFFFF";
+        const paperWidth = '80mm';
+
+        const htmlContent = `
+          <html>
+            <head>
+              <title>Receipt</title>
+              <style>
+                @page {
+                  size: ${paperWidth} auto;
+                  margin: 0;
+                }
+                body {
+                  font-family: monospace;
+                  width: ${paperWidth};
+                  margin: 0;
+                  padding: 5mm;
+                  box-sizing: border-box;
+                  font-size: 12px;
+                  line-height: 1.2;
+                  color: #000000;
+                }
+                h1 {
+                  font-size: 30px;
+                  color: ${primaryColor};
+                  margin: 0;
+                  padding: 0;
+                }
+                h2 {
+                  font-size: 12px;
+                  margin: 5px 0;
+                }
+                p {
+                  margin: 2px 0;
+                }
+                table {
+                  width: 100%;
+                  border-collapse: collapse;
+                  margin: 5px 0;
+                }
+                th, td {
+                  padding: 2px;
+                  text-align: left;
+                  font-size: 10px;
+                }
+                th {
+                  border-bottom: 1px solid #000;
+                }
+                .logo {
+                  width: 30px;
+                  height: 30px;
+                  margin-bottom: 5px;
+                }
+                .text-center {
+                  text-align: center;
+                }
+                .text-right {
+                  text-align: right;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="text-center">
+                ${logo ? `<img src="${logo}" alt="Logo" class="logo" />` : ''}
+                <h1>${hospitalName}</h1>
+                <p>${address}</p>
+                <p>${contact} | ${email}</p>
+              </div>
+              <h2 class="text-center">Pharmacy Receipt</h2>
+              <p class="text-center">Date: ${new Date(transaction.date).toLocaleString()}</p>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Unit</th>
+                    <th>Price</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${transaction.items.map(item => `
+                    <tr>
+                      <td>${item.name}</td>
+                      <td>${item.cartQuantity}</td>
+                      <td>${item.sellAs === 'box' ? 'Box' : (item.sellAs === 'other' ? 'Unit' : 'Tbl')}</td>
+                      <td>PKR ${item.customPrice || 0}</td>
+                      <td>PKR ${(item.customPrice * item.cartQuantity).toFixed(2)}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              <div class="text-right">
+                <p><strong>Total: PKR ${total.toFixed(2)}</strong></p>
+              </div>
+            </body>
+          </html>
+        `;
+        printContent(htmlContent);
+      };
+
+      const addUser = async (user) => {
+        try {
+          await db.users.add(user);
+          const { data, error } = await supabaseClient.from('users').insert([{
+            full_name: user.fullName,
+            username: user.username,
+            role: user.role,
+            status: user.status
+          }]).select();
+          if (error) throw error;
+          setUsers([...users, { ...user, id: data[0].id }]);
+        } catch (err) {
+          console.error('Error adding user:', err);
+          alert('Error adding user: ' + err.message);
+        }
+      };
+
+      const deleteUser = async (id) => {
+        try {
+          await db.users.delete(id);
+          const { error } = await supabaseClient.from('users').delete().eq('id', id);
+          if (error) throw error;
+          setUsers(users.filter(user => user.id !== id));
+        } catch (err) {
+          console.error('Error deleting user:', err);
+          alert('Error deleting user: ' + err.message);
+        }
+      };
+
+      const updateSettings = async (newSettings) => {
+        try {
+          await db.settings.put({ key: 'settings', value: newSettings });
+          const { error } = await supabaseClient.from('settings').upsert({ key: 'settings', value: newSettings }).eq('key', 'settings');
+          if (error) throw error;
+          setSettings(newSettings);
+        } catch (err) {
+          console.error('Error updating settings:', err);
+          alert('Error updating settings: ' + err.message);
+        }
+      };
+
+      const totalInventory = medicines.length;
+      const todaySales = reports
+        .filter(t => new Date(t.date).toDateString() === new Date().toDateString())
+        .reduce((sum, t) => sum + (t.total || 0), 0);
+      const lowStockItems = medicines.filter(m => (m.totalTablets ?? 0) <= (m.tablets_per_box ?? 1));
+      const expiringSoon = medicines.filter(m => {
+        const expiry = new Date(m.expiry);
+        const now = new Date();
+        const diffDays = (expiry - now) / (1000 * 60 * 60 * 24);
+        return diffDays <= 7;
+      });
+      const recentSales = reports.slice(-5);
+      const totalRevenue = reports.reduce((sum, report) => sum + (report.total || 0), 0);
+
+      const filteredMedicines = inventoryFilter === 'lowStock'
+        ? medicines.filter(m => (m.totalTablets ?? 0) <= (m.tablets_per_box ?? 1))
+        : inventoryFilter === 'expiringSoon'
+        ? medicines.filter(m => {
+            const expiry = new Date(m.expiry);
+            const now = new Date();
+            const diffDays = (expiry - now) / (1000 * 60 * 60 * 24);
+            return diffDays <= 7;
+          })
+        : medicines;
+
+      const medicineSales = {};
+      filteredReports.forEach(report => {
+        report.items.forEach(item => {
+          if (!medicineSales[item.name]) {
+            medicineSales[item.name] = { quantity: 0, revenue: 0 };
+          }
+          medicineSales[item.name].quantity += item.cartQuantity || 0;
+          medicineSales[item.name].revenue += (item.customPrice || 0) * (item.cartQuantity || 0);
+        });
+      });
+      const topSelling = Object.entries(medicineSales)
+        .sort((a, b) => b[1].quantity - a[1].quantity)
+        .slice(0, 3);
+
+      return (
+        <div className="flex h-screen">
+          <div className="w-64 bg-white border-r flex flex-col">
+            <div className="p-4">
+              <img src={settings.logo || ''} alt="Logo.png" className="w-12 h-12 mx-auto" onError={(e) => e.target.style.display = 'none'} />
+              <h2 className="text-center text-sm font-semibold">{settings.hospitalName || "Pharmacy"}</h2>
+            </div>
+            <nav className="flex-1">
+              {['Dashboard', 'Inventory', 'Sales', 'Barcode', 'Reports', 'Users', 'Settings'].map(section => (
+                <button
+                  key={section}
+                  onClick={() => {
+                    setCurrentSection(section);
+                    setInventoryFilter(null);
+                    if (section !== 'Barcode') {
+                      setSelectedMedicine(null);
+                      setBarcodeSearchTerm('');
+                      setBarcodeSearchResults([]);
+                      setShowCustomForm(false);
+                    }
+                    if (section === 'Reports') {
+                      setReportTab('Sales');
+                      setDateRange({ start: '', end: '' });
+                    }
+                    stopScanning();
+                  }}
+                  className={`w-full text-left py-2 px-4 flex items-center ${currentSection === section ? 'bg-gray-100 custom-blue-text' : ''}`}
+                >
+                  <span className="mr-2">{['📊', '📦', '🛒', '📷', '📈', '👤', '⚙️'][['Dashboard', 'Inventory', 'Sales', 'Barcode', 'Reports', 'Users', 'Settings'].indexOf(section)]}</span>
+                  {section}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          <div className="flex-1 flex flex-col">
+            <header className="bg-white-900 text-black p-4 flex justify-between items-center shadow-lg">
+              <div className="flex items-center space-x-4">
+                <img src="logo.png" alt="Hospital Logo" className="h-12 w-12 object-contain" />
+                <div>
+                  <h1 className="text-3xl font-aria">
+                    IMAM KHOMEINI HOSPITAL MEDICAL STORE MANAGEMENT
+                  </h1>
+                  <p className="text-sm">Status: {isOnline ? 'Online' : 'Offline'}</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-4">
+                <input type="text" placeholder="Search inventory, sales..." className="p-2 rounded text-black" />
+                <button className="relative">
+                  <span>🔔</span>
+                  <span className="absolute top-0 right-0 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">3</span>
+                </button>
+                <button className="flex items-center">
+                  <span className="mr-2">👤</span>User
+                </button>
+              </div>
+            </header>
+
+            <main className="p-6 flex-1 overflow-auto text-black">
+              {currentSection === 'Dashboard' && (
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">Dashboard</h1>
+                  <p className="text-gray-600 mb-4">Overview of pharmacy operations</p>
+                  <div className="grid grid-cols-4 gap-4 mb-6">
+                    <div className="card p-4 text-center">
+                      <h3 className="text-lg font-semibold">Total Inventory</h3>
+                      <p className="text-2xl">{totalInventory}</p>
+                      <p className="text-sm text-gray-500">24 new this month</p>
+                    </div>
+                    <div className="card p-4 text-center">
+                      <h3 className="text-lg font-semibold">Today's Sales</h3>
+                      <p className="text-2xl">PKR {todaySales.toFixed(2)}</p>
+                      <p className="text-sm text-gray-500">12% from yesterday</p>
+                    </div>
+                    <div className="card p-4 text-center">
+                      <h3 className="text-lg font-semibold">Low Stock Items</h3>
+                      <p className="text-2xl">{lowStockItems.length}</p>
+                      <p className="text-sm text-gray-500">{lowStockItems.length} items critically low</p>
+                    </div>
+                    <div className="card p-4 text-center">
+                      <h3 className="text-lg font-semibold">Expiring Soon</h3>
+                      <p className="text-2xl">{expiringSoon.length}</p>
+                      <p className="text-sm text-gray-500">{expiringSoon.length} items expire this week</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="card p-4">
+                      <h3 className="text-lg font-semibold">Low Stock Alerts</h3>
+                      {lowStockItems.length > 0 ? (
+                        <ul className="text-gray-700 mt-2">
+                          {lowStockItems.slice(0, 3).map(item => (
+                            <li key={item.id} className="py-1">
+                              {item.name} - {item.totalTablets} tablets left
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-gray-500 mt-2">No low stock items found.</p>
+                      )}
+                      <button 
+                        onClick={() => {
+                          setInventoryFilter('lowStock');
+                          setCurrentSection('Inventory');
+                        }} 
+                        className="text-blue-500 mt-2"
+                      >
+                        View All
+                      </button>
+                    </div>
+                    <div className="card p-4">
+                      <h3 className="text-lg font-semibold">Recent Sales</h3>
+                      {recentSales.length > 0 ? (
+                        <ul className="text-gray-700 mt-2">
+                          {recentSales.map(sale => (
+                            <li key={sale.id} className="py-1">
+                              {new Date(sale.date).toLocaleDateString()} - PKR {(sale.total || 0).toFixed(2)}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-gray-500 mt-2">No recent sales found.</p>
+                      )}
+                      <button 
+                        onClick={() => setCurrentSection('Reports')} 
+                        className="text-blue-500 mt-2"
+                      >
+                        View All
+                      </button>
+                    </div>
+                    <div className="card p-4">
+                      <h3 className="text-lg font-semibold">Expiring Medicines</h3>
+                      {expiringSoon.length > 0 ? (
+                        <ul className="text-gray-700 mt-2">
+                          {expiringSoon.slice(0, 3).map(item => (
+                            <li key={item.id} className="py-1">
+                              {item.name} - Expires {item.expiry}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-gray-500 mt-2">No medicines expiring soon.</p>
+                      )}
+                      <button 
+                        onClick={() => {
+                          setInventoryFilter('expiringSoon');
+                          setCurrentSection('Inventory');
+                        }} 
+                        className="text-blue-500 mt-2"
+                      >
+                        View All
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {currentSection === 'Inventory' && (
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">Inventory Management</h1>
+                  <p className="text-gray-600 mb-4">
+                    {inventoryFilter === 'lowStock' ? 'Showing low stock items' : 
+                     inventoryFilter === 'expiringSoon' ? 'Showing medicines expiring soon' : 
+                     'View, add, and manage medicines'}
+                  </p>
+                  <div className="flex justify-between mb-4">
+                    <button className="bg-gray-200 text-gray-700 py-2 px-4 rounded">Inventory</button>
+                    <button onClick={() => setCurrentSection('AddMedicine')} className="custom-blue text-white py-2 px-4 rounded">+ Add New Item</button>
+                  </div>
+                  <input type="text" placeholder="Search medicines by name, category, manufacturer..." className="w-full p-2 mb-4 border rounded text-black" />
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="border p-2">Name</th>
+                        <th className="border p-2">Barcode</th>
+                        <th className="border p-2">Boxes</th>
+                        <th className="border p-2">Tablets/Box</th>
+                        <th className="border p-2">Total Tablets</th>
+                        <th className="border p-2">Price/Tablet</th>
+                        <th className="border p-2">Price/Box</th>
+                        <th className="border p-2">Expiry</th>
+                        <th className="border p-2">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredMedicines.map(medicine => (
+                        <tr key={medicine.id}>
+                          <td className="border p-2">{medicine.name}</td>
+                          <td className="border p-2">{medicine.barcode || 'N/A'}</td>
+                          <td className="border p-2">{medicine.boxes || 0}</td>
+                          <td className="border p-2">{medicine.tablets_per_box || 0}</td>
+                          <td className="border p-2">{medicine.totalTablets || 0}</td>
+                          <td className="border p-2">PKR {parseFloat(medicine.price_per_tablet || 0).toFixed(2)}</td>
+                          <td className="border p-2">PKR {parseFloat(medicine.price_per_box || 0).toFixed(2)}</td>
+                          <td className="border p-2">{medicine.expiry || 'N/A'}</td>
+                          <td className="border p-2">
+                            <button onClick={() => handleEdit(medicine)} className="text-blue-500 mr-2">Edit</button>
+                            <button onClick={() => handleDelete(medicine.id)} className="text-red-500">Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                      {filteredMedicines.length === 0 && (
+                        <tr>
+                          <td colSpan="9" className="text-center p-4 text-gray-500">No medicines found</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {currentSection === 'AddMedicine' && (
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">{editingMedicine ? 'Edit Medicine' : 'Add New Medicine'}</h1>
+                  <div className="card p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <input
+                        className="border p-2 text-black"
+                        name="name"
+                        placeholder="Medicine Name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                      />
+                      <div className="flex items-center">
+                        <input
+                          className="border p-2 flex-1 text-black"
+                          name="barcode"
+                          placeholder="Barcode (optional)"
+                          value={formData.barcode}
+                          onChange={(e) => setFormData({ ...formData, barcode: e.target.value })}
+                        />
+                        <button
+                          onClick={() => startScanning((barcode) => setFormData({ ...formData, barcode }))}
+                          className="ml-2 p-2 border rounded"
+                        >
+                          {scanning ? 'Scanning...' : '📷'}
+                        </button>
+                      </div>
+                      <input
+                        className="border p-2 text-black"
+                        name="boxes"
+                        type="number"
+                        placeholder="Number of Boxes"
+                        value={formData.boxes}
+                        onChange={(e) => setFormData({ ...formData, boxes: e.target.value })}
+                        required
+                      />
+                      <input
+                        className="border p-2 text-black"
+                        name="tablets_per_box"
+                        type="number"
+                        placeholder="Tablets per Box"
+                        value={formData.tablets_per_box}
+                        onChange={(e) => setFormData({ ...formData, tablets_per_box: e.target.value })}
+                        required
+                      />
+                      <input
+                        className="border p-2 text-black"
+                        name="price_per_tablet"
+                        type="number"
+                        step="0.01"
+                        placeholder="Price per Tablet"
+                        value={formData.price_per_tablet}
+                        onChange={(e) => setFormData({ ...formData, price_per_tablet: e.target.value })}
+                        required
+                      />
+                      <input
+                        className="border p-2 text-black"
+                        name="price_per_box"
+                        type="number"
+                        step="0.01"
+                        placeholder="Price per Box"
+                        value={formData.price_per_box}
+                        onChange={(e) => setFormData({ ...formData, price_per_box: e.target.value })}
+                        required
+                      />
+                      <input
+                        className="border p-2 text-black"
+                        name="expiry"
+                        type="date"
+                        value={formData.expiry}
+                        onChange={(e) => setFormData({ ...formData, expiry: e.target.value })}
+                        required
+                      />
+                    </div>
+                    {scanning && (
+                      <div className="mt-4">
+                        <video id="scanner" playsInline autoPlay muted></video>
+                        <button onClick={stopScanning} className="mt-2 custom-blue text-white py-2 px-4 rounded">Stop Scanning</button>
+                      </div>
+                    )}
+                    <div className="flex justify-end mt-4">
+                      <button
+                        onClick={() => {
+                          setEditingMedicine(null);
+                          setCurrentSection('Inventory');
+                        }}
+                        className="border border-gray-300 py-2 px-4 rounded mr-2"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!formData.name || !formData.expiry) {
+                            alert('Please fill in all required fields.');
+                            return;
+                          }
+                          const boxes = parseInt(formData.boxes) || 0;
+                          const tablets_per_box = parseInt(formData.tablets_per_box) || 0;
+                          const totalTablets = boxes * tablets_per_box;
+                       const medicineData = {
+  name: formData.name,
+  barcode: formData.barcode,
+  boxes: parseInt(formData.boxes) || 0,
+  tablets_per_box: parseInt(formData.tablets_per_box) || 0,
+  totalTablets: boxes * tablets_per_box, // Use the calculated value
+  price_per_tablet: parseFloat(formData.price_per_tablet) || 0,
+  price_per_box: parseFloat(formData.price_per_box) || 0,
+  expiry: formData.expiry
+};
+                          try {
+                            if (editingMedicine) {
+                              const { error } = await supabaseClient.from('medicines').update(medicineData).eq('id', editingMedicine.id);
+                              if (error) throw error;
+                              setMedicines(medicines.map(m => m.id === editingMedicine.id ? { ...m, ...medicineData } : m));
+                              if (isOnline) {
+                                await db.syncQueue.add({ type: 'updateMedicine', data: { id: editingMedicine.id, ...medicineData } });
+                              }
+                            } else {
+                              const { data, error } = await supabaseClient.from('medicines').insert([medicineData]).select();
+                              if (error) throw error;
+                              const newMedicine = data[0];
+                              setMedicines([...medicines, newMedicine]);
+                              if (isOnline) {
+                                await db.syncQueue.add({ type: 'addMedicine', data: newMedicine });
+                              }
+                            }
+                            setEditingMedicine(null);
+                            setCurrentSection('Inventory');
+                          } catch (err) {
+                            console.error('Error saving medicine:', err);
+                            alert('Error saving medicine: ' + err.message);
+                          }
+                        }}
+                        className="custom-blue text-white py-2 px-4 rounded"
+                      >
+                        {editingMedicine ? 'Update Medicine' : 'Add Medicine'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {currentSection === 'Sales' && (
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">Sales Management</h1>
+                  <p className="text-gray-600 mb-4">Record sales transactions using barcode or QR code scanning</p>
+                  <div className="flex justify-between mb-4">
+                    <button className="bg-gray-200 text-gray-700 py-2 px-4 rounded">Quick Sale</button>
+                    <button onClick={() => setCurrentSection('Reports')} className="border border-gray-300 py-2 px-4 rounded">History</button>
+                    <button onClick={() => setCurrentSection('Sales')} className="custom-blue text-white py-2 px-4 rounded">+ New Sale</button>
+                  </div>
+                  <div className="card p-4">
+                    <h2 className="text-lg font-semibold mb-4">Quick Sale</h2>
+                    <div className="flex space-x-4 mb-4">
+                      <div className="flex-1">
+                        <label className="block mb-1">Scan Barcode/QR Code</label>
+                        <div className="flex items-center">
+                          <input type="text" placeholder="Scan barcode or QR code" className="flex-1 p-2 border rounded text-black" disabled />
+                          <button onClick={() => startScanning(handleScan)} className="ml-2 p-2 border rounded">{scanning ? 'Scanning...' : '📷'}</button>
+                        </div>
+                        {scanning && (
+                          <div className="mt-2">
+                            <video id="scanner" playsInline autoPlay muted></video>
+                            <button onClick={stopScanning} className="mt-2 custom-blue text-white py-2 px-4 rounded">Stop Scanning</button>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 relative">
+                        <label className="block mb-1">Search Medicine (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="Type to search..."
+                          className="w-full p-2 border rounded text-black"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                        />
+                        {searchResults.length > 0 && (
+                          <ul className="absolute bg-white border rounded mt-1 w-full z-10">
+                            {searchResults.map(medicine => (
+                              <li
+                                key={medicine.id}
+                                className="p-2 cursor-pointer hover:bg-gray-100"
+                                onClick={async () => {
+                                  const updatedMedicine = await db.medicines.get(medicine.id) || medicine;
+                                  const stock = updatedMedicine.totalTablets ?? 0;
+                                  if (stock <= 0) {
+                                    alert(`This medicine (${updatedMedicine.name}) is out of stock.`);
+                                    setSearchTerm('');
+                                    setSearchResults([]);
+                                    return;
+                                  }
+                                  const defaultSellAs = 'tablets';
+                                  const defaultPrice = defaultSellAs === 'tablets' ? (medicine.price_per_tablet ?? 0) : (medicine.price_per_box ?? 0);
+                                  setCart(prevCart => [
+                                    ...prevCart, 
+                                    { 
+                                      ...medicine, 
+                                      cartQuantity: 1, 
+                                      sellAs: defaultSellAs, 
+                                      customPrice: defaultPrice,
+                                      hasCustomPrice: false
+                                    }
+                                  ]);
+                                  setSearchTerm('');
+                                  setSearchResults([]);
+                                }}
+                              >
+                                {medicine.name} - PKR {parseFloat(medicine.price_per_tablet ?? 0).toFixed(2)}/tablet
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                    <table className="w-full border-collapse mb-4">
+                      <thead>
+                        <tr>
+                          <th className="border p-2">Medicine</th>
+                          <th className="border p-2">Batch</th>
+                          <th className="border p-2">Sell As</th>
+                          <th className="border p-2">Qty</th>
+                          <th className="border p-2">Price/Unit</th>
+                          <th className="border p-2">Total</th>
+                          <th className="border p-2">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cart.map((item, index) => (
+                          <tr key={index}>
+  <td className="border p-2">{item.name}</td>
+  <td className="border p-2">{item.barcode || 'Custom'}</td>
+  <td className="border p-2">
+    <select
+      value={item.sellAs}
+      onChange={(e) => {
+        const newCart = [...cart];
+        newCart[index].sellAs = e.target.value;
+        if (!newCart[index].hasCustomPrice) {
+          newCart[index].customPrice = e.target.value === 'tablets' 
+            ? (item.price_per_tablet ?? 0) 
+            : (e.target.value === 'box' ? (item.price_per_box ?? 0) : 0);
+        }
+        setCart(newCart);
+      }}
+      className="border p-1 rounded text-black"
+    >
+      <option value="tablets">Tablets</option>
+      <option value="box">Box</option>
+      <option value="other">Other</option>
+    </select>
+  </td>
+  <td className="border p-2">
+    <input
+      type="number"
+      value={item.cartQuantity}
+      onChange={(e) => {
+        const newQuantity = parseInt(e.target.value) || 1;
+        let maxQuantity;
+        if (item.sellAs === 'box') {
+          maxQuantity = item.boxes || 0;
+        } else if (item.sellAs === 'tablets') {
+          maxQuantity = item.totalTablets || 0;
+        } else {
+          maxQuantity = Infinity; // No stock limit for 'other'
+        }
+        if (newQuantity > maxQuantity) {
+          alert(`Cannot sell more than available stock. Available: ${maxQuantity} ${item.sellAs === 'box' ? 'boxes' : 'tablets'}`);
+          return;
+        }
+        const newCart = [...cart];
+        newCart[index].cartQuantity = newQuantity;
+        setCart(newCart);
+      }}
+      className="w-16 p-1 border rounded text-black"
+    />
+  </td>
+  <td className="border p-2">
+    <input
+      type="number"
+      step="0.01"
+      value={item.customPrice}
+      onChange={(e) => {
+        const newCart = [...cart];
+        newCart[index].customPrice = parseFloat(e.target.value) || 0;
+        newCart[index].hasCustomPrice = true;
+        setCart(newCart);
+      }}
+      className="w-20 p-1 border rounded text-black"
+    />
+    {item.sellAs === 'other' && item.customPrice === 0 && (
+      <p className="text-red-500 text-sm mt-1">Please enter a price for this item.</p>
+    )}
+  </td>
+  <td className="border p-2">
+    PKR {(item.customPrice * item.cartQuantity).toFixed(2)}
+  </td>
+  <td className="border p-2">
+    <button onClick={() => setCart(cart.filter((_, i) => i !== index))} className="text-red-500">Remove</button>
+  </td>
+</tr>
+                        ))}
+                        {cart.length === 0 && (
+                          <tr>
+                            <td colSpan="7" className="text-center p-4 text-gray-500">No items added to sale</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                    <div className="flex justify-end">
+                      <div className="text-right">
+                        <p className="font-semibold">Total: PKR {cart.reduce((sum, item) => sum + (item.customPrice * item.cartQuantity), 0).toFixed(2)}</p>
+                        <div className="mt-2">
+                          <button onClick={() => setCart([])} className="border border-gray-300 py-2 px-4 rounded mr-2">Clear All</button>
+                          <button
+                            onClick={processSale}
+                            className="custom-blue text-white py-2 px-4 rounded"
+                            disabled={cart.length === 0}
+                          >
+                            Complete Sale
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {currentSection === 'Barcode' && (
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">Barcode Management</h1>
+                  <p className="text-gray-600 mb-4">Generate, preview, and print barcodes/QR codes for medicines</p>
+                  <div className="flex justify-between mb-4">
+                    <button className="bg-gray-200 text-gray-700 py-2 px-4 rounded">Generate Barcode/QR Code</button>
+                    <button onClick={() => startScanning(handleScan)} className="border border-gray-300 py-2 px-4 rounded">Scan Barcode/QR Code</button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="card p-4">
+                      <h2 className="text-lg font-semibold mb-4">Generate Barcode/QR Code</h2>
+                      <div className="flex space-x-4 mb-4">
+                        <button
+                          onClick={() => setShowCustomForm(false)}
+                          className="custom-blue text-white py-2 px-4 rounded"
+                        >
+                          Medicine Barcode/QR Code
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowCustomForm(true);
+                            setSelectedMedicine(null);
+                          }}
+                          className="border border-gray-300 py-2 px-4 rounded"
+                        >
+                          Custom Barcode/QR Code
+                        </button>
+                      </div>
+                      {!showCustomForm ? (
+                        <div className="flex-1 relative mb-4">
+                          <input
+                            type="text"
+                            placeholder="Search by name or barcode"
+                            className="w-full p-2 border rounded text-black"
+                            value={barcodeSearchTerm}
+                            onChange={(e) => setBarcodeSearchTerm(e.target.value)}
+                          />
+                          {barcodeSearchResults.length > 0 && (
+                            <ul className="absolute bg-white border rounded mt-1 w-full z-10">
+                              {barcodeSearchResults.map(medicine => (
+                                <li
+                                  key={medicine.id}
+                                  className="p-2 cursor-pointer hover:bg-gray-100"
+                                  onClick={() => {
+                                    setSelectedMedicine(medicine);
+                                    setBarcodeSearchTerm('');
+                                    setBarcodeSearchResults([]);
+                                  }}
+                                >
+                                  {medicine.name} - {medicine.barcode || 'No barcode'}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-4">
+                          <input
+                            className="border p-2 text-black"
+                            placeholder="Medicine Name"
+                            value={customMedicine.name}
+                            onChange={(e) => setCustomMedicine({ ...customMedicine, name: e.target.value })}
+                          />
+                          <input
+                            className="border p-2 text-black"
+                            placeholder="Custom Barcode (optional)"
+                            value={customMedicine.barcode}
+                            onChange={(e) => setCustomMedicine({ ...customMedicine, barcode: e.target.value })}
+                          />
+                          <input
+                            className="border p-2 text-black"
+                            type="number"
+                            placeholder="Number of Boxes"
+                            value={customMedicine.boxes}
+                            onChange={(e) => setCustomMedicine({ ...customMedicine, boxes: parseInt(e.target.value) || 0 })}
+                          />
+                          <input
+                            className="border p-2 text-black"
+                            type="number"
+                            placeholder="Tablets per Box"
+                            value={customMedicine.tablets_per_box}
+                            onChange={(e) => setCustomMedicine({ ...customMedicine, tablets_per_box: parseInt(e.target.value) || 0 })}
+                          />
+                          <input
+                            className="border p-2 text-black"
+                            type="number"
+                            step="0.01"
+                            placeholder="Price per Tablet"
+                            value={customMedicine.price_per_tablet}
+                            onChange={(e) => setCustomMedicine({ ...customMedicine, price_per_tablet: parseFloat(e.target.value) || 0 })}
+                          />
+                          <input
+                            className="border p-2 text-black"
+                            type="number"
+                            step="0.01"
+                            placeholder="Price per Box"
+                            value={customMedicine.price_per_box}
+                            onChange={(e) => setCustomMedicine({ ...customMedicine, price_per_box: parseFloat(e.target.value) || 0 })}
+                          />
+                          <input
+                            className="border p-2 text-black"
+                            type="date"
+                            value={customMedicine.expiry}
+                            onChange={(e) => setCustomMedicine({ ...customMedicine, expiry: e.target.value })}
+                          />
+                          <button
+                            onClick={generateCustomCode}
+                            className="custom-blue text-white py-2 px-4 rounded col-span-2"
+                          >
+                            Generate Custom Barcode/QR Code
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="card p-4">
+                      <h2 className="text-lg font-semibold mb-4">Barcode/QR Code Preview</h2>
+                      {selectedMedicine ? (
+                        <div>
+                          <p className="mb-2">Medicine: {selectedMedicine.name}</p>
+                          {selectedMedicine.barcode && (
+                            <div className="mb-4">
+                              <p className="mb-2">Barcode: {selectedMedicine.barcode}</p>
+                              <canvas ref={barcodeCanvasRef} id="barcode-canvas"></canvas>
+                              <button
+                                onClick={() => printCode('barcode')}
+                                className="custom-blue text-white py-2 px-4 mt-2 rounded"
+                              >
+                                Print Barcode
+                              </button>
+                            </div>
+                          )}
+                          <div>
+                            <p className="mb-2">QR Code (Full Medicine Data):</p>
+                            <canvas ref={qrCodeCanvasRef} id="qrcode-canvas"></canvas>
+                            <button
+                              onClick={() => printCode('qrcode')}
+                              className="custom-blue text-white py-2 px-4 mt-2 rounded"
+                            >
+                              Print QR Code
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-gray-500 mb-4">Select a medicine or create a custom barcode/QR code to preview</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {currentSection === 'Reports' && (
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">Reports & Analysis</h1>
+                  <p className="text-gray-600 mb-4">View detailed reports and analyze pharmacy performance</p>
+                  <div className="card p-4 mb-4">
+                    <h3 className="text-lg font-semibold">Financial Overview</h3>
+                    <p>Total Revenue to Date: PKR {totalRevenue.toFixed(2)}</p>
+                  </div>
+                  <div className="flex justify-between mb-4">
+                    <div className="flex space-x-4">
+                      <button
+                        onClick={() => setReportTab('Sales')}
+                        className={`py-2 px-4 rounded ${reportTab === 'Sales' ? 'tab-active' : 'bg-gray-200 text-gray-700'}`}
+                      >
+                        Sales Report
+                      </button>
+                      <button
+                        onClick={() => setReportTab('Inventory')}
+                        className={`py-2 px-4 rounded ${reportTab === 'Inventory' ? 'tab-active' : 'bg-gray-200 text-gray-700'}`}
+                      >
+                        Inventory Report
+                      </button>
+                      <button
+                        onClick={() => setReportTab('Analysis')}
+                        className={`py-2 px-4 rounded ${reportTab === 'Analysis' ? 'tab-active' : 'bg-gray-200 text-gray-700'}`}
+                      >
+                        Analysis
+                      </button>
+                    </div>
+                    <div className="flex space-x-4">
+                      <div className="flex space-x-2">
+                        <input
+                          type="date"
+                          className="border p-2 rounded text-black"
+                          value={dateRange.start}
+                          onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                        />
+                        <span className="self-center">to</span>
+                        <input
+                          type="date"
+                          className="border p-2 rounded text-black"
+                          value={dateRange.end}
+                          onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                        />
+                      </div>
+                      <button
+                        onClick={() => printReport(reportTab)}
+                        className="custom-blue text-white py-2 px-4 rounded"
+                      >
+                        Print Report
+                      </button>
+                    </div>
+                  </div>
+
+                  {reportTab === 'Sales' && (
+                    <div>
+                      <h2 className="text-lg font-semibold mb-4">Sales Report</h2>
+                      <p className="mb-4">Total Sales (Selected Period): PKR {filteredReports.reduce((sum, report) => sum + (report.total || 0), 0).toFixed(2)}</p>
+                      <table className="w-full border-collapse">
+  <thead>
+    <tr>
+      <th className="border p-2">Date & Time</th>
+      <th className="border p-2">Items</th>
+      <th className="border p-2">Quantity</th>
+      <th className="border p-2">Price/Unit</th>
+      <th className="border p-2">Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {filteredReports.map((report, index) => (
+      <tr key={index}>
+        <td className="border p-2">{new Date(report.date).toLocaleString()}</td>
+        <td className="border p-2">{report.items.map(item => item.name).join(', ')}</td>
+        <td className="border p-2">{report.items.map(item => `${item.cartQuantity} ${item.sellAs}`).join(', ')}</td>
+        <td className="border p-2">{report.items.map(item => `PKR ${item.customPrice || 0}`).join(', ')}</td>
+        <td className="border p-2">PKR {(report.total || 0).toFixed(2)}</td>
+      </tr>
+    ))}
+    {filteredReports.length === 0 && (
+      <tr>
+        <td colSpan="5" className="text-center p-4 text-gray-500">No sales data available for the selected period.</td>
+      </tr>
+    )}
+  </tbody>
+  {filteredReports.length > 0 && (
+    <tfoot>
+      <tr>
+        <td colSpan="4" className="border p-2 text-right font-bold">Grand Total:</td>
+        <td className="border p-2 font-bold">PKR {filteredReports.reduce((sum, report) => sum + (report.total || 0), 0).toFixed(2)}</td>
+      </tr>
+    </tfoot>
+  )}
+</table>
+                    </div>
+                  )}
+
+                  {reportTab === 'Inventory' && (
+                    <div>
+                      <h2 className="text-lg font-semibold mb-4">Inventory Report</h2>
+                      <p className="mb-4">Total Items: {medicines.length} | Low Stock: {lowStockItems.length} | Expiring Soon: {expiringSoon.length}</p>
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr>
+                            <th className="border p-2">Name</th>
+                            <th className="border p-2">Barcode</th>
+                            <th className="border p-2">Total Tablets</th>
+                            <th className="border p-2">Boxes</th>
+                            <th className="border p-2">Price/Tablet</th>
+                            <th className="border p-2">Price/Box</th>
+                            <th className="border p-2">Expiry</th>
+                            <th className="border p-2">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {medicines.map(medicine => {
+                            const isLowStock = (medicine.totalTablets ?? 0) <= (medicine.tablets_per_box ?? 1);
+                            const expiry = new Date(medicine.expiry);
+                            const now = new Date();
+                            const diffDays = (expiry - now) / (1000 * 60 * 60 * 24);
+                            const isExpiringSoon = diffDays <= 7;
+                            return (
+                              <tr key={medicine.id}>
+                                <td className="border p-2">{medicine.name}</td>
+                                <td className="border p-2">{medicine.barcode || 'N/A'}</td>
+                                <td className="border p-2">{medicine.totalTablets || 0}</td>
+                                <td className="border p-2">{medicine.boxes || 0}</td>
+                                <td className="border p-2">PKR {parseFloat(medicine.price_per_tablet || 0).toFixed(2)}</td>
+                                <td className="border p-2">PKR {parseFloat(medicine.price_per_box || 0).toFixed(2)}</td>
+                                <td className="border p-2">{medicine.expiry || 'N/A'}</td>
+                                <td className="border p-2">
+                                  {isLowStock && <span className="text-red-500">Low Stock</span>}
+                                  {isLowStock && isExpiringSoon && ' | '}
+                                  {isExpiringSoon && <span className="text-orange-500">Expiring Soon</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {medicines.length === 0 && (
+                            <tr>
+                              <td colSpan="8" className="text-center p-4 text-gray-500">No inventory data available.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {reportTab === 'Analysis' && (
+                    <div>
+                      <h2 className="text-lg font-semibold mb-4">Analysis</h2>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="card p-4">
+                          <h3 className="text-lg font-semibold mb-2">Sales Analysis</h3>
+                          <p>Total Revenue (All Time): PKR {totalRevenue.toFixed(2)}</p>
+                          <p>Total Revenue (Selected Period): PKR {filteredReports.reduce((sum, report) => sum + (report.total || 0), 0).toFixed(2)}</p>
+                          <h4 className="mt-4">Top Selling Medicines (Selected Period):</h4>
+                          {topSelling.length > 0 ? (
+                            <ul className="text-gray-700 mt-2">
+                              {topSelling.map(([name, data]) => (
+                                <li key={name}>
+                                  {name}: {data.quantity} units sold, PKR {data.revenue.toFixed(2)}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p className="text-gray-500 mt-2">No sales data available for the selected period.</p>
+                          )}
+                        </div>
+                        <div className="card p-4">
+                          <h3 className="text-lg font-semibold mb-2">Inventory Analysis</h3>
+                          <p>Total Items in Stock: {medicines.length}</p>
+                          <p>Low Stock Items: {lowStockItems.length}</p>
+                          <p>Expiring Soon: {expiringSoon.length}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {currentSection === 'Users' && (
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">User Management</h1>
+                  <p className="text-gray-600 mb-4">Manage staff and access roles</p>
+                  <button onClick={() => setCurrentSection('AddUser')} className="custom-blue text-white py-2 px-4 mb-4 rounded">+ Add User</button>
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr>
+                        <th className="border p-2">Full Name</th>
+                        <th className="border p-2">Username</th>
+                        <th className="border p-2">Role</th>
+                        <th className="border p-2">Status</th>
+                        <th className="border p-2">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map(user => (
+                        <tr key={user.id}>
+                          <td className="border p-2">{user.fullName || user.full_name}</td>
+                          <td className="border p-2">{user.username}</td>
+                          <td className="border p-2">
+                            <span className="bg-gray-100 text-gray-700 py-1 px-2 rounded">{user.role}</span>
+                          </td>
+                          <td className="border p-2">
+                            <span className={`py-1 px-2 rounded ${user.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                              {user.status}
+                            </span>
+                          </td>
+                          <td className="border p-2">
+                            <button className="text-blue-500 mr-2">Edit</button>
+                            <button onClick={() => deleteUser(user.id)} className="text-red-500">Delete</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {currentSection === 'AddUser' && (
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">Add New User</h1>
+                  <div className="card p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <input className="border p-2 text-black" name="fullName" placeholder="Full Name" required />
+                      <input className="border p-2 text-black" name="username" placeholder="Username" required />
+                      <select className="border p-2 text-black" name="role">
+                        <option>Administrator</option>
+                        <option>Staff</option>
+                      </select>
+                      <select className="border p-2 text-black" name="status">
+                        <option>Active</option>
+                        <option>Inactive</option>
+                      </select>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        const form = e.target.parentElement;
+                        const fullName = form.querySelector('[name="fullName"]').value;
+                        const username = form.querySelector('[name="username"]').value;
+                        const role = form.querySelector('[name="role"]').value;
+                        const status = form.querySelector('[name="status"]').value;
+                        if (!fullName || !username) {
+                          alert('Please fill in all required fields.');
+                          return;
+                        }
+                        addUser({ fullName, username, role, status });
+                        setCurrentSection('Users');
+                      }}
+                      className="custom-blue text-white py-2 px-4 mt-4 rounded"
+                    >
+                      Add User
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {currentSection === 'Settings' && (
+                <div>
+                  <h1 className="text-2xl font-bold mb-2">Settings</h1>
+                  <p className="text-gray-600 mb-4">Configure system preferences and hospital information</p>
+                  <div className="flex space-x-4 mb-4">
+                    <button className="bg-gray-200 text-gray-700 py-2 px-4 rounded">Hospital Information</button>
+                    <button className="border border-gray-300 py-2 px-4 rounded">Application Settings</button>
+                  </div>
+                  <div className="card p-4">
+                    <h2 className="text-lg font-semibold mb-4">Hospital Information</h2>
+                    <p className="text-gray-600 mb-4">Update your hospital details. This information will appear on reports and receipts.</p>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block mb-1">Hospital Name</label>
+                        <input
+                          className="w-full border p-2 text-black"
+                          value={settings.hospitalName}
+                          onChange={(e) => setSettings({ ...settings, hospitalName: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1">Address</label>
+                        <input
+                          className="w-full border p-2 text-black"
+                          value={settings.address}
+                          onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1">Contact Number</label>
+                        <input
+                          className="w-full border p-2 text-black"
+                          value={settings.contact}
+                          onChange={(e) => setSettings({ ...settings, contact: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1">Email Address</label>
+                        <input
+                          className="w-full border p-2 text-black"
+                          value={settings.email}
+                          onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1">Logo URL (Optional)</label>
+                        <input
+                          className="w-full border p-2 text-black"
+                          value={settings.logo}
+                          onChange={(e) => setSettings({ ...settings, logo: e.target.value })}
+                        />
+                      </div>
+                      <div>
+                        <label className="block mb-1">Primary Color</label>
+                        <input
+                          type="color"
+                          className="w-full border p-2"
+                          value={settings.primaryColor}
+                          onChange={(e) => setSettings({ ...settings, primaryColor: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <button onClick={() => updateSettings(settings)} className="custom-blue text-white py-2 px-4 mt-4 rounded">Save Settings</button>
+                  </div>
+                </div>
+              )}
+            </main>
+          </div>
+        </div>
+      );
+    }
+
+    const rootElement = document.getElementById('root');
+    const root = ReactDOMClient.createRoot(rootElement);
+    root.render(
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
+    );
+  </script>
+</body>
+</html>

@@ -1,0 +1,3034 @@
+<!DOCTYPE html>
+<html lang="en">
+  <button onclick="logout()" style="background: #ff6b6b; color: white; padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+  Logout
+</button>
+
+<script>
+function logout() {
+  if (confirm('Are you sure you want to logout?')) {
+    // Force clear everything
+    localStorage.clear();
+    
+    // Force reload to login page
+    window.location.replace('index.html');
+  }
+}
+</script>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Darul Shifa Patient Management</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      font-family: 'Inter', Arial, sans-serif;
+      background-color: #f9f9f9;
+      color: #212529;
+      line-height: 1.4;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      background-color: #ffffff;
+      color: #000000;
+      padding: 0.5rem 1.5rem;
+      gap: 0.8rem;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+    header img {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      border-radius: 40px;
+    }
+    .hospital-info {
+      display: flex;
+      flex-direction: column;
+    }
+    .hospital-info h1 {
+      font-size: 2rem;
+      margin: 0;
+      font-weight: bold;
+    }
+    .hospital-info p {
+      font-size: 0.85rem;
+      margin: 0.05rem 0;
+    }
+    .main-container {
+      display: flex;
+      gap: 0;
+      padding: 0;
+      flex-wrap: nowrap;
+      height: calc(100vh - 140px);
+      position: relative;
+    }
+    .sidebar {
+      flex: 0 0 100px;
+      background: #fff;
+      border-right: 2px solid #000;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem 0;
+      box-shadow: 2px 0 4px rgba(0, 0, 0, 0.1);
+    }
+    .sidebar-item {
+      padding: 1rem;
+      text-align: center;
+      cursor: pointer;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-bottom: 1px solid #e0e0e0;
+      transition: background-color 0.3s;
+    }
+    .sidebar-item:hover {
+      background-color: #f0f0f0;
+    }
+    .sidebar-item.active {
+      background-color: #1f87ff;
+      color: white;
+    }
+    .content-section {
+      display: none;
+    }
+    .content-section.active {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .left-panel {
+      flex: 1 1 40%;
+      min-width: 400px;
+      background: #fff;
+      border-right: 2px solid #000;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      overflow-y: auto;
+    }
+    .resizer {
+      width: 5px;
+      background: #e0e0e0;
+      cursor: col-resize;
+      position: relative;
+      z-index: 10;
+    }
+    .resizer:hover {
+      background: #1f87ff;
+    }
+    .middle-panel {
+      flex: 1 1 60%;
+      min-width: 300px;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+      overflow-y: auto;
+    }
+    .middle-panel.hidden {
+      display: none;
+    }
+    .left-panel h2 {
+      font-size: 1.3rem;
+      color: #000000;
+      margin-bottom: 0.5rem;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .form-group label {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 0.7rem;
+      border: 2px solid #adaaaa;
+      border-radius: 6px;
+      font-size: 1rem;
+    }
+    .btn-container {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background-color: #ffffff;
+      color: #000000;
+      border: none;
+      padding: 0.6rem 1rem;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: center;
+      transition: background-color 0.3s ease;
+      white-space: nowrap;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.6);
+    }
+    .btn:hover {
+      background-color: #1f87ff;
+    }
+    .delete-btn {
+      background-color: #dc3545;
+      color: white;
+    }
+    .delete-btn:hover {
+      background-color: #a71d2a;
+    }
+    .admin-container {
+      display: flex;
+      gap: 1.5rem;
+      padding: 1rem;
+      height: 100%;
+    }
+    .admin-left {
+      flex: 1 1 40%;
+      min-width: 400px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .admin-right {
+      flex: 1 1 60%;
+      min-width: 300px;
+      overflow-y: auto;
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+    .admin-card {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 1.5rem;
+      border: 1px solid #ddd;
+    }
+    .admin-card h3 {
+      margin-bottom: 1rem;
+      color: #000;
+      font-size: 1.2rem;
+      border-bottom: 2px solid #1f87ff;
+      padding-bottom: 0.5rem;
+    }
+    .admin-card h4 {
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: #333;
+      font-size: 1rem;
+    }
+    .admin-display {
+      background: white;
+      border-radius: 8px;
+      padding: 1.5rem;
+      border: 1px solid #ddd;
+      margin-bottom: 1.5rem;
+    }
+    .admin-display h3 {
+      margin-bottom: 1rem;
+      color: #000;
+      font-size: 1.2rem;
+      border-bottom: 2px solid #1f87ff;
+      padding-bottom: 0.5rem;
+    }
+    .admin-list {
+      max-height: 300px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      padding: 0.5rem;
+      border-radius: 4px;
+      margin-top: 0.5rem;
+      background: white;
+    }
+    .admin-list-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem;
+      border-bottom: 1px solid #eee;
+    }
+    .admin-list-item:last-child {
+      border-bottom: none;
+    }
+    .admin-list-item:hover {
+      background-color: #f8f9fa;
+    }
+    .visit-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: #e9ecef;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.3s;
+    }
+    .visit-toggle:hover {
+      background: #dee2e6;
+    }
+    .visit-toggle input[type="checkbox"] {
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+    }
+    .visit-toggle.active {
+      background: #28a745;
+      color: white;
+    }
+    .visit-badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      background: #28a745;
+      color: white;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: bold;
+      margin-left: 0.5rem;
+    }
+    .visit-form-section {
+      background: white;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      border: 1px solid #ddd;
+    }
+    .visit-form-section h3 {
+      color: #000;
+      font-size: 1.1rem;
+      margin-bottom: 1rem;
+      border-bottom: 2px solid #1f87ff;
+      padding-bottom: 0.5rem;
+    }
+    .checkbox-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .checkbox-item input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+    .checkbox-item label {
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .qr-display {
+      text-align: center;
+      padding: 2rem;
+      background: white;
+      border-radius: 8px;
+      border: 2px dashed #1f87ff;
+    }
+    .scan-area {
+      background: white;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+    }
+    .scan-result {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-top: 1rem;
+      text-align: left;
+    }
+    .data-grid {
+      background: #fff;
+      padding: 1.5rem;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
+    }
+    .data-grid h2 {
+      font-size: 1.3rem;
+      color: #000000;
+      margin-bottom: 0.5rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0.3rem;
+      font-size: 0.9rem;
+    }
+    table th,
+    table td {
+      border: 1px solid #adaaaa;
+      padding: 0.5rem;
+      text-align: left;
+    }
+    table th {
+      background-color: #ffffff;
+      color: #000000;
+      font-weight: 600;
+    }
+    .table-btn {
+      padding: 0.3rem 0.7rem;
+      background-color: #1f87ff;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.85rem;
+    }
+    .table-btn:hover {
+      background-color: #0056b3;
+    }
+    .print-container {
+      width: 280mm;
+      height: 400mm;
+      margin: auto;
+      padding: 20px;
+      box-sizing: border-box;
+      background-color: #ffffff;
+      border: 3px solid #000000;
+      border-radius: 6px;
+    }
+    .print-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 3px solid #000000;
+    }
+    .print-header img {
+      max-width: 130px;
+      height: auto;
+      margin-right: 15px;
+      object-fit: contain;
+    }
+    .print-header .address {
+      flex-grow: 1;
+      position: relative;
+    }
+    .print-header .address h2 {
+      margin: 0;
+      font-size: 46px;
+      font-weight: bold;
+    }
+    .print-header .address p {
+      margin: 5px 0;
+      font-size: 25px;
+    }
+    .top-count {
+      position: absolute;
+      top: 0;
+      right: 0;
+      font-size: 25px;
+      font-weight: bold;
+      color: #000;
+    }
+    .print-top-info {
+      display: flex;
+      justify-content: space-between;
+      font-size: 25px;
+      margin-bottom: 15px;
+      padding-bottom: 10px;
+      border-bottom: 3px solid #000000;
+      font-weight: bold;
+    }
+    .columns {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 20px;
+      height: 82%;
+    }
+    .left-column,
+    .right-column {
+      border: 3px solid #000000;
+      border-radius: 6px;
+      padding: 16px;
+    }
+    .left-column {
+      flex: 0.4;
+    }
+    .left-column h2 {
+      text-align: center;
+      font-size: 30px;
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+    .left-column div {
+      font-size: 25px;
+      margin-bottom: 20px;
+    }
+    .right-column {
+      flex: 1;
+    }
+    .right-column div {
+      font-size: 25px;
+      margin-bottom: 10px;
+    }
+    .rx {
+      margin-top: 15px;
+      text-align: left;
+    }
+    .rx h1 {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 60px;
+      font-weight: normal;
+    }
+    footer {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      padding: 0.4rem;
+      font-size: 0.9rem;
+      color: #000000;
+      background-color: #ffffff;
+      border-top: 1px solid #000000;
+      box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.5);
+    }
+    @media (max-width: 1400px) {
+      .main-container {
+        flex-wrap: wrap;
+        height: auto;
+      }
+      .sidebar,
+      .left-panel,
+      .middle-panel {
+        flex: 1 1 100%;
+        min-width: auto;
+      }
+      .resizer {
+        display: none;
+      }
+      .admin-container {
+        flex-direction: column;
+      }
+      .admin-left,
+      .admin-right {
+        flex: 1 1 100%;
+        min-width: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="logo.png" alt="Hospital Logo" />
+    <div class="hospital-info">
+      <h1>Darul Shifa Imam Khomeini Hospital</h1>
+      <p>Block 3, Hazara Town, Brewery Road, Quetta</p>
+      <p>Phone: 0812857135</p>
+    </div>
+  </header>
+  <div class="main-container">
+    <div class="sidebar">
+      <div class="sidebar-item active" onclick="showSection('patient')">meanu</div>
+      <div class="sidebar-item" onclick="showSection('lab')">Lab</div>
+      <div class="sidebar-item" onclick="showSection('admin')">admin</div>
+      <div class="sidebar-item" onclick="showSection('scan')">scan</div>
+      <div class="sidebar-item">accounts</div>
+    </div>
+    <div class="left-panel">
+      <!-- Patient Section -->
+      <div id="patient-section" class="content-section active">
+      <h2>Add New Patient</h2>
+      <form id="patientForm">
+        <div class="form-group">
+          <label for="patientName">Patient Name</label>
+          <input type="text" id="patientName" required />
+        </div>
+        <div class="form-group">
+          <label for="contactNumber">Contact Number</label>
+          <input type="tel" id="contactNumber" placeholder="e.g. 081-1234567" />
+        </div>
+        <div class="form-group">
+          <label for="amount">Payment (PKR)</label>
+          <input type="number" id="amount" placeholder="e.g. 500" />
+        </div>
+        <div class="form-group">
+          <label for="doctorName">Doctor's Name</label>
+          <input list="doctorList" id="doctorName" placeholder="Type or select a doctor" required />
+          <datalist id="doctorList"></datalist>
+          <p id="doctorCount"></p>
+        </div>
+        <div class="form-group" id="patientCountGroup" style="display: none;">
+          <label id="patientCountLabel">Today's Patient Count for Doctor: </label>
+          <input type="number" id="patientCountInput" min="0" />
+        </div>
+        <div class="form-group">
+          <label for="gender">Gender</label>
+          <input list="genderList" id="gender" placeholder="Male/Female" required />
+          <datalist id="genderList">
+            <option value="Male"></option>
+            <option value="Female"></option>
+          </datalist>
+        </div>
+        <div class="form-group">
+          <label for="patientAge">Age</label>
+          <input type="text" id="patientAge" required />
+        </div>
+        <div class="form-group">
+          <label for="weight">Weight (kg)</label>
+          <input type="number" id="weight" placeholder="70" />
+        </div>
+        <div class="form-group">
+          <label for="temperature">Temperature</label>
+          <input type="text" id="temperature" placeholder="98.6 F" />
+        </div>
+        <div class="form-group">
+          <label for="bp">Blood Pressure</label>
+          <input type="text" id="bp" placeholder="120/80" />
+        </div>
+        <div class="form-group">
+          <label for="clinicalNotes">Clinical Notes</label>
+          <textarea id="clinicalNotes" rows="2"></textarea>
+        </div>
+        
+        <!-- Visit form removed from patient section - now prints blank form -->
+      </form>
+      <div class="btn-container">
+        <button class="btn" onclick="addPatient()">Save & Print (A4)</button>
+        <button class="btn" onclick="addPatientAndThermalPrint()">Save & Thermal Print</button>
+        <button class="btn" onclick="addPatientFree()" style="background-color: #28a745; color: white;">Free Patient</button>
+        <button class="btn delete-btn" onclick="deletePatient()">Delete</button>
+      </div>
+      </div>
+
+      <!-- Lab Section -->
+      <div id="lab-section" class="content-section">
+        <h2>Add New Lab Test</h2>
+        <form id="labForm">
+          <div class="form-group">
+            <label for="labPatientId">Patient ID (Auto-fill)</label>
+            <input type="text" id="labPatientId" placeholder="Enter Patient ID to auto-fill" />
+          </div>
+          <div class="form-group">
+            <label for="labPatientName">Patient Name</label>
+            <input type="text" id="labPatientName" required />
+          </div>
+          <div class="form-group">
+            <label for="labAge">Age</label>
+            <input type="text" id="labAge" required />
+          </div>
+          <div class="form-group">
+            <label for="labGender">Gender</label>
+            <input list="labGenderList" id="labGender" placeholder="Male/Female" required />
+            <datalist id="labGenderList">
+              <option value="Male"></option>
+              <option value="Female"></option>
+            </datalist>
+          </div>
+          <div class="form-group">
+            <label for="labClinic">Clinic</label>
+            <input type="text" id="labClinic" />
+          </div>
+          <div class="form-group">
+            <label for="labPhone">Phone</label>
+            <input type="tel" id="labPhone" placeholder="e.g. 081-1234567" />
+          </div>
+          <div class="form-group">
+            <label for="labContact">Contact</label>
+            <input type="tel" id="labContact" placeholder="e.g. 081-1234567" readonly />
+          </div>
+          <div class="form-group">
+            <label for="labPrize">Prize (PKR)</label>
+            <input type="number" id="labPrize" placeholder="e.g. 1000" />
+          </div>
+          <div class="form-group">
+            <label for="labReferredBy">Referred By</label>
+            <input type="text" id="labReferredBy" />
+          </div>
+          <div class="form-group">
+            <label for="labDrName">Doctor's Name</label>
+            <input list="labDoctorList" id="labDrName" placeholder="Type or select a doctor" />
+            <datalist id="labDoctorList"></datalist>
+          </div>
+          <div class="form-group">
+            <label for="labTestName">Test Name</label>
+            <input list="testList" id="labTestName" placeholder="Type or select a test" required onchange="autoFillTestPrice()" />
+            <datalist id="testList">
+            </datalist>
+          </div>
+        </form>
+        <div class="btn-container">
+          <button class="btn" onclick="addLabTest()">Save & Thermal Print</button>
+          <button class="btn delete-btn" onclick="deleteLabTest()">Delete</button>
+        </div>
+      </div>
+
+      <!-- Admin Section -->
+      <div id="admin-section" class="content-section">
+        <h2>Admin Panel - Manage Data</h2>
+        
+        <div style="margin-bottom: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+          <h3 style="margin-bottom: 1rem;">Manage Doctors</h3>
+          <div class="form-group">
+            <label for="newDoctorName">Add New Doctor</label>
+            <input type="text" id="newDoctorName" placeholder="Enter doctor name" />
+          </div>
+          <div class="form-group">
+            <label for="newDoctorDepartment">Department/Specialty</label>
+            <input list="departmentList" id="newDoctorDepartment" placeholder="e.g., Emergency, Consultant OPD" />
+            <datalist id="departmentList"></datalist>
+          </div>
+          <button class="btn" onclick="addNewDoctor()">Add Doctor</button>
+          
+          <div style="margin-top: 1rem;">
+            <h4>Current Doctors:</h4>
+            <div id="doctorsList" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+          <h3 style="margin-bottom: 1rem;">Manage Departments</h3>
+          <div class="form-group">
+            <label for="newDepartmentName">Add New Department</label>
+            <input type="text" id="newDepartmentName" placeholder="Enter department name" />
+          </div>
+          <button class="btn" onclick="addNewDepartment()">Add Department</button>
+          
+          <div style="margin-top: 1rem;">
+            <h4>Current Departments:</h4>
+            <div id="departmentsList" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 2rem; padding: 1rem; background: #f8f9fa; border-radius: 6px;">
+          <h3 style="margin-bottom: 1rem;">Manage Lab Tests</h3>
+          <div class="form-group">
+            <label for="newTestName">Add New Test</label>
+            <input type="text" id="newTestName" placeholder="Enter test name" />
+          </div>
+          <div class="form-group">
+            <label for="newTestPrice">Default Price (PKR)</label>
+            <input type="number" id="newTestPrice" placeholder="Enter default price" />
+          </div>
+          <button class="btn" onclick="addNewTest()">Add Test</button>
+          
+          <div style="margin-top: 1rem;">
+            <h4>Current Tests:</h4>
+            <div id="testsList" style="max-height: 200px; overflow-y: auto; border: 1px solid #ddd; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem;">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Scan Section -->
+      <div id="scan-section" class="content-section">
+        <h2>Scan Visit Form</h2>
+        
+        <div style="display: flex; gap: 1rem; height: 100%;">
+          <div style="flex: 1; background: white; border-radius: 8px; padding: 1.5rem;">
+            <h3>Step 1: Upload Filled Visit Form</h3>
+            <input type="file" id="qrImageInput" accept="image/*" style="margin: 1rem 0;" />
+            
+            <div style="margin-top: 1rem;">
+              <label><strong>Patient ID:</strong></label>
+              <input type="text" id="scanPatientId" placeholder="Enter Patient ID" style="width: 100%; padding: 0.7rem; border: 2px solid #adaaaa; border-radius: 6px; margin-top: 0.5rem;" />
+            </div>
+            
+            <button class="btn" onclick="processVisitForm()" style="margin-top: 1rem; width: 100%;">Process Visit Form</button>
+            
+            <div id="formPreview" style="margin-top: 1rem; display: none;">
+              <h4>Form Preview:</h4>
+              <img id="previewImage" style="max-width: 100%; border: 1px solid #ddd; border-radius: 4px; margin-top: 0.5rem;" />
+            </div>
+          </div>
+          
+          <div style="flex: 1; background: #f8f9fa; border-radius: 8px; padding: 1.5rem; overflow-y: auto;">
+            <h3>Step 2: Check and Save Data</h3>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">Review the scanned information and click Save to update patient record.</p>
+            
+            <div id="scanResult" style="display: none;">
+              <div id="scanResultContent"></div>
+              
+              <div style="margin-top: 2rem; padding: 1.5rem; background: white; border-radius: 8px;">
+                <h4 style="margin-bottom: 1rem;">Visit Information</h4>
+                
+                <div class="visit-form-section">
+                  <h3>Risk Factors</h3>
+                  <div class="checkbox-grid">
+                    <div class="checkbox-item"><input type="checkbox" id="scan_rf_hypertension" value="Hypertension"><label for="scan_rf_hypertension">Hypertension</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_rf_diabetes" value="Diabetes mellitus"><label for="scan_rf_diabetes">Diabetes mellitus</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_rf_lipids" value="Lipids"><label for="scan_rf_lipids">Lipids</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_rf_cvd" value="CVD"><label for="scan_rf_cvd">CVD</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_rf_stroke" value="Stroke"><label for="scan_rf_stroke">Stroke</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_rf_hbsag" value="HBsAG"><label for="scan_rf_hbsag">HBsAG</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_rf_hcv" value="HCV"><label for="scan_rf_hcv">HCV</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_rf_obesity" value="Obesity"><label for="scan_rf_obesity">Obesity</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_rf_lab" value="Lab Investigation"><label for="scan_rf_lab">Lab Investigation</label></div>
+                  </div>
+                </div>
+                
+                <div class="visit-form-section">
+                  <h3>Presenting Complaints</h3>
+                  <div class="checkbox-grid">
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_gastro" value="Gastro"><label for="scan_pc_gastro">Gastro</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_ari" value="ARI"><label for="scan_pc_ari">ARI</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_abdpain" value="Abdominal Pain"><label for="scan_pc_abdpain">Abdominal Pain</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_malaria" value="Malaria"><label for="scan_pc_malaria">Malaria</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_flu" value="Flu"><label for="scan_pc_flu">Flu</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_uti" value="UTI"><label for="scan_pc_uti">UTI</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_headache" value="Headache"><label for="scan_pc_headache">Headache</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_lowresp" value="Lower Respiratory"><label for="scan_pc_lowresp">Lower Respiratory</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_cough" value="Cough"><label for="scan_pc_cough">Cough</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_fever" value="Fever"><label for="scan_pc_fever">Fever</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_constipation" value="Constipation"><label for="scan_pc_constipation">Constipation</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_diarrhea" value="Diarrhea"><label for="scan_pc_diarrhea">Diarrhea</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_vomiting" value="Vomiting"><label for="scan_pc_vomiting">Vomiting</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_sob" value="SOB"><label for="scan_pc_sob">SOB</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_anxiety" value="Anxiety"><label for="scan_pc_anxiety">Anxiety</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_bodypain" value="Body pain"><label for="scan_pc_bodypain">Body pain</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_rta" value="RTA"><label for="scan_pc_rta">RTA</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_trauma" value="Trauma"><label for="scan_pc_trauma">Trauma</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_sorethroat" value="Sore throat"><label for="scan_pc_sorethroat">Sore throat</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_jointpain" value="Joint pain"><label for="scan_pc_jointpain">Joint pain</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_neckpain" value="Neck Pain"><label for="scan_pc_neckpain">Neck Pain</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_sweating" value="Sweating"><label for="scan_pc_sweating">Sweating</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_chestpain" value="Chest pain"><label for="scan_pc_chestpain">Chest pain</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_insomnia" value="Insomnia"><label for="scan_pc_insomnia">Insomnia</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_palpitations" value="Palpitations"><label for="scan_pc_palpitations">Palpitations</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_rash" value="Rash"><label for="scan_pc_rash">Rash</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_syncope" value="Syncope"><label for="scan_pc_syncope">Syncope</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_edema" value="Edema"><label for="scan_pc_edema">Edema</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_numbness" value="Numbness"><label for="scan_pc_numbness">Numbness</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_paresthesia" value="Paresthesia"><label for="scan_pc_paresthesia">Paresthesia</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_hematuria" value="Hematuria"><label for="scan_pc_hematuria">Hematuria</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_epistaxis" value="Epistaxis"><label for="scan_pc_epistaxis">Epistaxis</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_pc_dyspnea" value="Dyspnea"><label for="scan_pc_dyspnea">Dyspnea</label></div>
+                  </div>
+                </div>
+                
+                <div class="visit-form-section">
+                  <h3>Treatment Plan</h3>
+                  <div class="checkbox-grid">
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_antibiotics" value="Antibiotics"><label for="scan_tp_antibiotics">Antibiotics</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_analgesics" value="Analgesics"><label for="scan_tp_analgesics">Analgesics</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_antipyretics" value="Antipyretics"><label for="scan_tp_antipyretics">Antipyretics</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_antiemetics" value="Antiemetics"><label for="scan_tp_antiemetics">Antiemetics</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_ivfluids" value="IV Fluids"><label for="scan_tp_ivfluids">IV Fluids</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_nebulization" value="Nebulization"><label for="scan_tp_nebulization">Nebulization</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_oxygen" value="Oxygen Therapy"><label for="scan_tp_oxygen">Oxygen Therapy</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_debridement" value="Wound Debridement"><label for="scan_tp_debridement">Wound Debridement</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_immobilization" value="Immobilization"><label for="scan_tp_immobilization">Immobilization</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_vitals" value="Vitals Monitoring"><label for="scan_tp_vitals">Vitals Monitoring</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_npo" value="NPO"><label for="scan_tp_npo">NPO</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_io" value="Input/Output Charting"><label for="scan_tp_io">Input/Output Charting</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_physio" value="Physiotherapy"><label for="scan_tp_physio">Physiotherapy</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_counselling" value="Counselling"><label for="scan_tp_counselling">Counselling</label></div>
+                    <div class="checkbox-item"><input type="checkbox" id="scan_tp_dietary" value="Dietary modification"><label for="scan_tp_dietary">Dietary modification</label></div>
+                  </div>
+                </div>
+                
+                <button class="btn" onclick="saveVisitData()" style="width: 100%; margin-top: 1rem;">Save Visit Data to Patient Record</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="resizer" id="resizer"></div>
+    <div class="middle-panel" id="middlePanel">
+      <div class="data-grid">
+        <h2 id="dataGridTitle">Patient Records</h2>
+        <table id="dataTable">
+          <thead id="tableHeader">
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Dr Name</th>
+              <th>Gender</th>
+              <th>Age</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <footer>
+    Made by INAM ALI SOOMRO
+  </footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<script>
+// Authentication Check - Add this at the top of your script section
+async function checkAuthentication() {
+  const session = localStorage.getItem('currentSession');
+  
+  if (!session) {
+    alert('Please login first');
+    window.location.href = 'index.html';
+    return;
+  }
+
+  const currentUser = JSON.parse(session);
+  
+  // For patients.html, check if role is reception or admin
+  const requiredRole = 'reception'; // Change to 'medical' for medicine.html
+  
+  if (currentUser.role !== requiredRole && currentUser.role !== 'admin') {
+    alert('Access denied. You do not have permission to access this page.');
+    window.location.href = 'index.html';
+    return;
+  }
+
+  // Display current user info
+  console.log('Logged in as:', currentUser.fullName, '(' + currentUser.role + ')');
+  
+  return currentUser;
+}
+
+// Call this before anything else
+checkAuthentication();
+
+
+
+
+
+
+
+
+
+
+
+
+    let patients = [];
+    let labTests = [];
+    let doctors = [];
+    let departments = [];
+    let testsList = [];
+    let doctorCounts = {};
+    let currentSection = 'patient';
+
+    // Resizer functionality
+    const resizer = document.getElementById('resizer');
+    const leftPanel = document.querySelector('.left-panel');
+    const middlePanel = document.getElementById('middlePanel');
+
+    let isResizing = false;
+
+    resizer.addEventListener('mousedown', function(e) {
+      isResizing = true;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isResizing) return;
+
+      const container = document.querySelector('.main-container');
+      const containerRect = container.getBoundingClientRect();
+      const sidebarWidth = 100;
+      
+      const newLeftWidth = e.clientX - containerRect.left - sidebarWidth;
+      const minWidth = 300;
+      const maxWidth = containerRect.width - sidebarWidth - minWidth - 5;
+
+      if (newLeftWidth >= minWidth && newLeftWidth <= maxWidth) {
+        const leftPercentage = (newLeftWidth / (containerRect.width - sidebarWidth - 5)) * 100;
+        const rightPercentage = 100 - leftPercentage;
+        
+        leftPanel.style.flex = `1 1 ${leftPercentage}%`;
+        middlePanel.style.flex = `1 1 ${rightPercentage}%`;
+      }
+    });
+
+    document.addEventListener('mouseup', function() {
+      isResizing = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    });
+    
+    
+
+    function openDatabase() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open('HospitalDB', 6);
+
+            request.onupgradeneeded = function(event) {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains('patients')) {
+                    db.createObjectStore('patients', { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains('labTests')) {
+                    db.createObjectStore('labTests', { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains('doctors')) {
+                    db.createObjectStore('doctors', { keyPath: 'key' });
+                }
+                if (!db.objectStoreNames.contains('departments')) {
+                    db.createObjectStore('departments', { keyPath: 'key' });
+                }
+                if (!db.objectStoreNames.contains('tests')) {
+                    db.createObjectStore('tests', { keyPath: 'key' });
+                }
+                if (!db.objectStoreNames.contains('doctorCounts')) {
+                    db.createObjectStore('doctorCounts', { keyPath: 'key' });
+                }
+                if (!db.objectStoreNames.contains('doctorCountsHistory')) {
+                    db.createObjectStore('doctorCountsHistory', { keyPath: 'date' });
+                }
+                if (!db.objectStoreNames.contains('config')) {
+                    db.createObjectStore('config', { keyPath: 'key' });
+                }
+            };
+
+            request.onsuccess = function(event) {
+                resolve(event.target.result);
+            };
+
+            request.onerror = function(event) {
+                reject(event.target.error);
+            };
+        });
+    }
+
+    async function migrateData() {
+        const db = await openDatabase();
+        const patientsFromLS = JSON.parse(localStorage.getItem('patients')) || [];
+        if (patientsFromLS.length > 0) {
+            const transaction = db.transaction(['patients'], 'readwrite');
+            const store = transaction.objectStore('patients');
+            patientsFromLS.forEach(patient => {
+                store.put(patient);
+            });
+            localStorage.removeItem('patients');
+        }
+        const doctorsFromLS = JSON.parse(localStorage.getItem('doctors')) || [];
+        if (doctorsFromLS.length > 0) {
+            const transaction = db.transaction(['doctors'], 'readwrite');
+            const store = transaction.objectStore('doctors');
+            store.put({ key: 'list', value: doctorsFromLS });
+            localStorage.removeItem('doctors');
+        }
+        const doctorCountsFromLS = JSON.parse(localStorage.getItem('doctorCounts')) || {};
+        if (Object.keys(doctorCountsFromLS).length > 0) {
+            const transaction = db.transaction(['doctorCounts'], 'readwrite');
+            const store = transaction.objectStore('doctorCounts');
+            store.put({ key: 'counts', value: doctorCountsFromLS });
+            localStorage.removeItem('doctorCounts');
+        }
+        const lastResetDateFromLS = localStorage.getItem('lastResetDate');
+        if (lastResetDateFromLS) {
+            const transaction = db.transaction(['doctorCounts'], 'readwrite');
+            const store = transaction.objectStore('doctorCounts');
+            store.put({ key: 'lastResetDate', value: lastResetDateFromLS });
+            localStorage.removeItem('lastResetDate');
+        }
+    }
+
+    async function loadData() {
+        const db = await openDatabase();
+        
+        const patientTransaction = db.transaction(['patients'], 'readonly');
+        const patientStore = patientTransaction.objectStore('patients');
+        const patientRequest = patientStore.getAll();
+        const patientsPromise = new Promise((resolve, reject) => {
+            patientRequest.onsuccess = function() {
+                patients = patientRequest.result;
+                resolve();
+            };
+            patientRequest.onerror = function() {
+                reject(patientRequest.error);
+            };
+        });
+        
+        const labTransaction = db.transaction(['labTests'], 'readonly');
+        const labStore = labTransaction.objectStore('labTests');
+        const labRequest = labStore.getAll();
+        const labPromise = new Promise((resolve, reject) => {
+            labRequest.onsuccess = function() {
+                labTests = labRequest.result;
+                resolve();
+            };
+            labRequest.onerror = function() {
+                reject(labRequest.error);
+            };
+        });
+        
+        const doctorTransaction = db.transaction(['doctors'], 'readonly');
+        const doctorStore = doctorTransaction.objectStore('doctors');
+        const doctorRequest = doctorStore.get('list');
+        const doctorsPromise = new Promise((resolve, reject) => {
+            doctorRequest.onsuccess = function() {
+                if (doctorRequest.result) {
+                    doctors = doctorRequest.result.value;
+                } else {
+                    doctors = [
+                        { name: "DEEDAR", department: "Emergency", visitSection: false },
+                        { name: "MUHAMMAD ILYAS", department: "Consultant OPD", visitSection: false },
+                        { name: "SARFARAZ KHAN", department: "Surgery", visitSection: false },
+                        { name: "GUL AFROZ", department: "Gynecology", visitSection: false },
+                        { name: "SAIMA RASOOL", department: "Pediatrics", visitSection: false },
+                        { name: "ZAFAR IQBAL", department: "Medicine", visitSection: false },
+                        { name: "SULEIMAN", department: "Cardiology", visitSection: false },
+                        { name: "MUHAMMAD ALI", department: "Orthopedics", visitSection: false },
+                        { name: "NASIBULLAH", department: "ENT", visitSection: false },
+                        { name: "SHAH ZAMAN", department: "Dermatology", visitSection: false },
+                        { name: "MUHAMMAD BUKHSH", department: "Neurology", visitSection: false },
+                        { name: "NAIM MULGHANI", department: "Radiology", visitSection: false },
+                        { name: "NASEER AHMED", department: "Pathology", visitSection: false },
+                        { name: "MUDASIRA", department: "Gynecology", visitSection: false },
+                        { name: "AMEEN", department: "Medicine", visitSection: false },
+                        { name: "MUHAMMAD RAZA", department: "Surgery", visitSection: false },
+                        { name: "ANWAR", department: "Emergency", visitSection: false },
+                        { name: "ABDUL HAMEED", department: "Consultant OPD", visitSection: false },
+                        { name: "AFIFA", department: "Pediatrics", visitSection: false },
+                        { name: "HABINULLAH", department: "Medicine", visitSection: false },
+                        { name: "ABDUL MAJEED MAGSI", department: "Surgery", visitSection: false },
+                        { name: "MIRZA OMAR", department: "Cardiology", visitSection: false }
+                    ];
+                    const saveTransaction = db.transaction(['doctors'], 'readwrite');
+                    const saveStore = saveTransaction.objectStore('doctors');
+                    saveStore.put({ key: 'list', value: doctors });
+                }
+                resolve();
+            };
+            doctorRequest.onerror = function() {
+                reject(doctorRequest.error);
+            };
+        });
+        
+        const deptTransaction = db.transaction(['departments'], 'readonly');
+        const deptStore = deptTransaction.objectStore('departments');
+        const deptRequest = deptStore.get('list');
+        const departmentsPromise = new Promise((resolve, reject) => {
+            deptRequest.onsuccess = function() {
+                if (deptRequest.result) {
+                    departments = deptRequest.result.value;
+                } else {
+                    departments = [
+                        "Emergency",
+                        "Consultant OPD",
+                        "Surgery",
+                        "Gynecology",
+                        "Pediatrics",
+                        "Medicine",
+                        "Cardiology",
+                        "Orthopedics",
+                        "ENT",
+                        "Dermatology",
+                        "Neurology",
+                        "Radiology",
+                        "Pathology"
+                    ];
+                    const saveTransaction = db.transaction(['departments'], 'readwrite');
+                    const saveStore = saveTransaction.objectStore('departments');
+                    saveStore.put({ key: 'list', value: departments });
+                }
+                resolve();
+            };
+            deptRequest.onerror = function() {
+                reject(deptRequest.error);
+            };
+        });
+        
+        const testsTransaction = db.transaction(['tests'], 'readonly');
+        const testsStore = testsTransaction.objectStore('tests');
+        const testsRequest = testsStore.get('list');
+        const testsPromise = new Promise((resolve, reject) => {
+            testsRequest.onsuccess = function() {
+                if (testsRequest.result) {
+                    testsList = testsRequest.result.value;
+                } else {
+                    testsList = [
+                        { name: "Complete Blood Count (CBC)", price: 800 },
+                        { name: "Blood Sugar (Fasting)", price: 300 },
+                        { name: "Blood Sugar (Random)", price: 300 },
+                        { name: "HbA1c", price: 1500 },
+                        { name: "Lipid Profile", price: 1200 },
+                        { name: "Liver Function Test (LFT)", price: 1500 },
+                        { name: "Kidney Function Test (KFT)", price: 1500 },
+                        { name: "Thyroid Function Test", price: 2000 },
+                        { name: "Urine Complete", price: 500 },
+                        { name: "X-Ray Chest", price: 800 },
+                        { name: "ECG", price: 600 },
+                        { name: "Ultrasound", price: 2000 }
+                    ];
+                    const saveTransaction = db.transaction(['tests'], 'readwrite');
+                    const saveStore = saveTransaction.objectStore('tests');
+                    saveStore.put({ key: 'list', value: testsList });
+                }
+                resolve();
+            };
+            testsRequest.onerror = function() {
+                reject(testsRequest.error);
+            };
+        });
+        
+        const countsTransaction = db.transaction(['doctorCounts'], 'readonly');
+        const countsStore = countsTransaction.objectStore('doctorCounts');
+        const countsRequest = countsStore.get('counts');
+        const countsPromise = new Promise((resolve, reject) => {
+            countsRequest.onsuccess = function() {
+                if (countsRequest.result) {
+                    doctorCounts = countsRequest.result.value;
+                } else {
+                    doctorCounts = {};
+                }
+                resolve();
+            };
+            countsRequest.onerror = function() {
+                reject(countsRequest.error);
+            };
+        });
+        await Promise.all([patientsPromise, labPromise, doctorsPromise, departmentsPromise, testsPromise, countsPromise]);
+    }
+
+    async function savePatient(patient) {
+        const db = await openDatabase();
+        const transaction = db.transaction(['patients'], 'readwrite');
+        const store = transaction.objectStore('patients');
+        store.put(patient);
+    }
+
+    async function saveLabTest(labTest) {
+        const db = await openDatabase();
+        const transaction = db.transaction(['labTests'], 'readwrite');
+        const store = transaction.objectStore('labTests');
+        store.put(labTest);
+    }
+
+    async function saveDoctors() {
+        const db = await openDatabase();
+        const transaction = db.transaction(['doctors'], 'readwrite');
+        const store = transaction.objectStore('doctors');
+        store.put({ key: 'list', value: doctors });
+    }
+
+    async function saveDepartments() {
+        const db = await openDatabase();
+        const transaction = db.transaction(['departments'], 'readwrite');
+        const store = transaction.objectStore('departments');
+        store.put({ key: 'list', value: departments });
+    }
+
+    async function saveTests() {
+        const db = await openDatabase();
+        const transaction = db.transaction(['tests'], 'readwrite');
+        const store = transaction.objectStore('tests');
+        store.put({ key: 'list', value: testsList });
+    }
+
+    async function saveDoctorCounts() {
+        const db = await openDatabase();
+        const transaction = db.transaction(['doctorCounts'], 'readwrite');
+        const store = transaction.objectStore('doctorCounts');
+        store.put({ key: 'counts', value: doctorCounts });
+    }
+
+    async function getLastResetDate() {
+        const db = await openDatabase();
+        const transaction = db.transaction(['doctorCounts'], 'readonly');
+        const store = transaction.objectStore('doctorCounts');
+        const request = store.get('lastResetDate');
+        return new Promise((resolve, reject) => {
+            request.onsuccess = function() {
+                resolve(request.result ? request.result.value : null);
+            };
+            request.onerror = function() {
+                reject(request.error);
+            };
+        });
+    }
+
+    async function setLastResetDate(date) {
+        const db = await openDatabase();
+        const transaction = db.transaction(['doctorCounts'], 'readwrite');
+        const store = transaction.objectStore('doctorCounts');
+        store.put({ key: 'lastResetDate', value: date });
+    }
+
+    async function getGlobalPatientCount() {
+      const db = await openDatabase();
+      const transaction = db.transaction(['config'], 'readonly');
+      const store = transaction.objectStore('config');
+      const request = store.get('globalPatientCount');
+      return new Promise((resolve) => {
+        request.onsuccess = () => {
+          const result = request.result;
+          const today = getToday();
+          resolve((result && result.date === today) ? result.count : 0);
+        };
+      });
+    }
+
+    async function setGlobalPatientCount(count) {
+      const db = await openDatabase();
+      const today = getToday();
+      const transaction = db.transaction(['config'], 'readwrite');
+      const store = transaction.objectStore('config');
+      store.put({ key: 'globalPatientCount', date: today, count });
+    }
+
+    function getToday() {
+      return new Date().toLocaleDateString();
+    }
+
+    async function resetDoctorCountsIfNewDay() {
+        const today = getToday();
+        const lastResetDate = await getLastResetDate();
+        if (lastResetDate && lastResetDate !== today) {
+            const db = await openDatabase();
+            const transaction = db.transaction(['doctorCountsHistory'], 'readwrite');
+            const store = transaction.objectStore('doctorCountsHistory');
+            store.put({ date: lastResetDate, counts: doctorCounts });
+            doctorCounts = {};
+            await setGlobalPatientCount(0);
+            await saveDoctorCounts();
+            await setLastResetDate(today);
+        }
+    }
+
+    async function updatePatientCountDisplay() {
+      const selectedDoctor = document.getElementById('doctorName').value;
+      const countGroup = document.getElementById('patientCountGroup');
+      const countLabel = document.getElementById('patientCountLabel');
+      const countInput = document.getElementById('patientCountInput');
+      
+      if (selectedDoctor) {
+        const today = getToday();
+        const count = doctorCounts[selectedDoctor] && doctorCounts[selectedDoctor].date === today ? doctorCounts[selectedDoctor].count : 0;
+        countLabel.textContent = `Today's Patient Count for Doctor: ${selectedDoctor}`;
+        countInput.value = count;
+        countGroup.style.display = 'block';
+      } else {
+        countGroup.style.display = 'none';
+      }
+    }
+
+    async function updateDoctorCount() {
+      const selectedDoctor = document.getElementById('doctorName').value;
+      const newCount = parseInt(document.getElementById('patientCountInput').value, 10);
+      if (selectedDoctor && !isNaN(newCount) && newCount >= 0) {
+        const today = getToday();
+        doctorCounts[selectedDoctor] = { date: today, count: newCount };
+        await saveDoctorCounts();
+      } else {
+        alert('Please enter a valid non-negative number.');
+      }
+    }
+
+    function renderDoctorList() {
+      const doctorList = document.getElementById('doctorList');
+      const labDoctorList = document.getElementById('labDoctorList');
+      
+      doctorList.innerHTML = '';
+      labDoctorList.innerHTML = '';
+      
+      doctors.forEach(doc => {
+        const docName = typeof doc === 'string' ? doc : doc.name;
+        
+        const option1 = document.createElement('option');
+        option1.value = docName;
+        doctorList.appendChild(option1);
+        
+        const option2 = document.createElement('option');
+        option2.value = docName;
+        labDoctorList.appendChild(option2);
+      });
+      
+      document.getElementById('doctorCount').innerText = "Total Doctors: " + doctors.length;
+    }
+
+    function renderDepartmentsList() {
+      const departmentList = document.getElementById('departmentList');
+      if (!departmentList) return;
+      
+      departmentList.innerHTML = '';
+      departments.forEach(dept => {
+        const option = document.createElement('option');
+        option.value = dept;
+        departmentList.appendChild(option);
+      });
+    }
+
+    function renderTestsList() {
+      const testList = document.getElementById('testList');
+      testList.innerHTML = '';
+      
+      testsList.forEach(test => {
+        const option = document.createElement('option');
+        option.value = test.name;
+        testList.appendChild(option);
+      });
+    }
+
+    function renderAdminDoctorsList() {
+      const doctorsListDiv = document.getElementById('doctorsList');
+      if (!doctorsListDiv) return;
+      
+      doctorsListDiv.innerHTML = '';
+      doctors.forEach((doc, index) => {
+        const docName = typeof doc === 'string' ? doc : doc.name;
+        const docDept = typeof doc === 'string' ? 'N/A' : (doc.department || 'N/A');
+        const visitSection = typeof doc === 'string' ? false : (doc.visitSection || false);
+        
+        const docDiv = document.createElement('div');
+        docDiv.className = 'admin-list-item';
+        docDiv.innerHTML = `
+          <div style="flex: 1;">
+            <div style="font-weight: 600;">
+              ${docName}
+              ${visitSection ? '<span class="visit-badge">VISIT</span>' : ''}
+            </div>
+            <div style="font-size: 0.85rem; color: #666;">${docDept}</div>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <label class="visit-toggle ${visitSection ? 'active' : ''}" onclick="toggleVisitSection(${index})">
+              <input type="checkbox" ${visitSection ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleVisitSection(${index})" />
+              <span>Visit</span>
+            </label>
+            <button class="btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="editDoctor(${index})">Edit</button>
+            <button class="btn delete-btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="removeDoctor(${index})">Remove</button>
+          </div>
+        `;
+        doctorsListDiv.appendChild(docDiv);
+      });
+    }
+
+    function renderAdminDepartmentsList() {
+      const deptListDiv = document.getElementById('departmentsList');
+      if (!deptListDiv) return;
+      
+      deptListDiv.innerHTML = '';
+      departments.forEach((dept, index) => {
+        const deptDiv = document.createElement('div');
+        deptDiv.className = 'admin-list-item';
+        deptDiv.innerHTML = `
+          <span style="font-weight: 600;">${dept}</span>
+          <button class="btn delete-btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="removeDepartment(${index})">Remove</button>
+        `;
+        deptListDiv.appendChild(deptDiv);
+      });
+    }
+
+    function renderAdminTestsList() {
+      const testsListDiv = document.getElementById('testsList');
+      if (!testsListDiv) return;
+      
+      testsListDiv.innerHTML = '';
+      testsList.forEach((test, index) => {
+        const testDiv = document.createElement('div');
+        testDiv.className = 'admin-list-item';
+        testDiv.innerHTML = `
+          <div style="flex: 1;">
+            <div style="font-weight: 600;">${test.name}</div>
+            <div style="font-size: 0.85rem; color: #666;">PKR ${test.price}</div>
+          </div>
+          <button class="btn delete-btn" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;" onclick="removeTest(${index})">Remove</button>
+        `;
+        testsListDiv.appendChild(testDiv);
+      });
+    }
+
+    async function addNewDoctor() {
+      const newDoctorName = document.getElementById('newDoctorName').value.trim();
+      const newDoctorDept = document.getElementById('newDoctorDepartment').value.trim();
+      const visitSection = document.getElementById('newDoctorVisitSection').checked;
+      
+      if (!newDoctorName) {
+        alert('Please enter a doctor name');
+        return;
+      }
+      
+      const doctorExists = doctors.some(doc => {
+        const docName = typeof doc === 'string' ? doc : doc.name;
+        return docName === newDoctorName;
+      });
+      
+      if (doctorExists) {
+        alert('This doctor already exists');
+        return;
+      }
+      
+      doctors.push({
+        name: newDoctorName,
+        department: newDoctorDept || 'General',
+        visitSection: visitSection
+      });
+      
+      await saveDoctors();
+      renderDoctorList();
+      renderAdminDoctorsList();
+      
+      document.getElementById('newDoctorName').value = '';
+      document.getElementById('newDoctorDepartment').value = '';
+      document.getElementById('newDoctorVisitSection').checked = false;
+      alert('Doctor added successfully!');
+    }
+
+    async function toggleVisitSection(index) {
+      const doc = doctors[index];
+      if (typeof doc === 'string') {
+        doctors[index] = {
+          name: doc,
+          department: 'General',
+          visitSection: true
+        };
+      } else {
+        doctors[index].visitSection = !doctors[index].visitSection;
+      }
+      
+      await saveDoctors();
+      renderAdminDoctorsList();
+    }
+
+    async function editDoctor(index) {
+      const doc = doctors[index];
+      const docName = typeof doc === 'string' ? doc : doc.name;
+      const docDept = typeof doc === 'string' ? '' : (doc.department || '');
+      const visitSection = typeof doc === 'string' ? false : (doc.visitSection || false);
+      
+      const newName = prompt('Edit Doctor Name:', docName);
+      if (newName === null) return;
+      
+      const newDept = prompt('Edit Department:', docDept);
+      if (newDept === null) return;
+      
+      if (!newName.trim()) {
+        alert('Doctor name cannot be empty');
+        return;
+      }
+      
+      doctors[index] = {
+        name: newName.trim(),
+        department: newDept.trim() || 'General',
+        visitSection: visitSection
+      };
+      
+      await saveDoctors();
+      renderDoctorList();
+      renderAdminDoctorsList();
+      alert('Doctor updated successfully!');
+    }
+
+    async function removeDoctor(index) {
+      const doc = doctors[index];
+      const docName = typeof doc === 'string' ? doc : doc.name;
+      
+      if (!confirm(`Are you sure you want to remove Dr. ${docName}?`)) {
+        return;
+      }
+      
+      doctors.splice(index, 1);
+      await saveDoctors();
+      renderDoctorList();
+      renderAdminDoctorsList();
+    }
+
+    async function addNewDepartment() {
+      const newDeptName = document.getElementById('newDepartmentName').value.trim();
+      
+      if (!newDeptName) {
+        alert('Please enter a department name');
+        return;
+      }
+      
+      if (departments.includes(newDeptName)) {
+        alert('This department already exists');
+        return;
+      }
+      
+      departments.push(newDeptName);
+      await saveDepartments();
+      renderDepartmentsList();
+      renderAdminDepartmentsList();
+      
+      document.getElementById('newDepartmentName').value = '';
+      alert('Department added successfully!');
+    }
+
+    async function removeDepartment(index) {
+      if (!confirm('Are you sure you want to remove this department?')) {
+        return;
+      }
+      
+      departments.splice(index, 1);
+      await saveDepartments();
+      renderDepartmentsList();
+      renderAdminDepartmentsList();
+    }
+
+    async function addNewTest() {
+      const newTestName = document.getElementById('newTestName').value.trim();
+      const newTestPrice = document.getElementById('newTestPrice').value;
+      
+      if (!newTestName) {
+        alert('Please enter a test name');
+        return;
+      }
+      
+      if (!newTestPrice || newTestPrice <= 0) {
+        alert('Please enter a valid price');
+        return;
+      }
+      
+      if (testsList.some(t => t.name === newTestName)) {
+        alert('This test already exists');
+        return;
+      }
+      
+      testsList.push({ name: newTestName, price: parseInt(newTestPrice) });
+      await saveTests();
+      renderTestsList();
+      renderAdminTestsList();
+      
+      document.getElementById('newTestName').value = '';
+      document.getElementById('newTestPrice').value = '';
+      alert('Test added successfully!');
+    }
+
+    async function removeTest(index) {
+      if (!confirm('Are you sure you want to remove this test?')) {
+        return;
+      }
+      
+      testsList.splice(index, 1);
+      await saveTests();
+      renderTestsList();
+      renderAdminTestsList();
+    }
+
+    async function savePatientDataFromForm() {
+      await resetDoctorCountsIfNewDay();
+      const name = document.getElementById('patientName').value;
+      const contact = document.getElementById('contactNumber').value;
+      const gender = document.getElementById('gender').value;
+      const age = document.getElementById('patientAge').value;
+      const doctor = document.getElementById('doctorName').value;
+      const notes = document.getElementById('clinicalNotes').value;
+      const bp = document.getElementById('bp').value;
+      const weight = document.getElementById('weight').value;
+      const amount = document.getElementById('amount').value;
+      const temperature = document.getElementById('temperature').value;
+      const rx = '';
+      const today = getToday();
+
+      if (doctor && !doctors.some(d => (typeof d === 'string' ? d : d.name) === doctor)) {
+        doctors.push({ name: doctor, department: 'General', visitSection: false });
+        await saveDoctors();
+        renderDoctorList();
+      }
+      if (doctor) {
+        if (doctorCounts[doctor] && doctorCounts[doctor].date === today) {
+          doctorCounts[doctor].count++;
+        } else {
+          doctorCounts[doctor] = { date: today, count: 1 };
+        }
+        await saveDoctorCounts();
+      }
+      
+      const dateNow = today;
+      let globalCount = await getGlobalPatientCount() + 1;
+      await setGlobalPatientCount(globalCount);
+      const now = new Date();
+      const monthNum = now.getMonth() + 1;
+      const monthLetter = String.fromCharCode(64 + monthNum);
+      const day = now.getDate().toString().padStart(2, '0');
+      const seq = globalCount.toString().padStart(3, '0');
+      const patientId = `${monthLetter}${day}${seq}`;
+      
+      if (patients.some(p => p.id === patientId)) {
+        alert('ID conflict! Please try again.');
+        return null;
+      }
+
+      const newPatient = {
+        id: patientId,
+        name,
+        contact,
+        gender,
+        age,
+        doctor,
+        notes,
+        bp,
+        weight,
+        amount,
+        temperature,
+        dateAdded: dateNow,
+        rx,
+        visitData: null,
+        isFree: false
+      };
+
+      patients.push(newPatient);
+      await savePatient(newPatient);
+      renderPatientTable();
+      document.getElementById('patientForm').reset();
+      updatePatientCountDisplay();
+      
+      return newPatient;
+    }
+
+    async function addPatientFree() {
+      await resetDoctorCountsIfNewDay();
+      const name = document.getElementById('patientName').value;
+      const contact = document.getElementById('contactNumber').value;
+      const gender = document.getElementById('gender').value;
+      const age = document.getElementById('patientAge').value;
+      const doctor = document.getElementById('doctorName').value;
+      const notes = document.getElementById('clinicalNotes').value;
+      const bp = document.getElementById('bp').value;
+      const weight = document.getElementById('weight').value;
+      const temperature = document.getElementById('temperature').value;
+      const rx = '';
+      const today = getToday();
+
+      if (doctor && !doctors.some(d => (typeof d === 'string' ? d : d.name) === doctor)) {
+        doctors.push({ name: doctor, department: 'General', visitSection: false });
+        await saveDoctors();
+        renderDoctorList();
+      }
+      if (doctor) {
+        if (doctorCounts[doctor] && doctorCounts[doctor].date === today) {
+          doctorCounts[doctor].count++;
+        } else {
+          doctorCounts[doctor] = { date: today, count: 1 };
+        }
+        await saveDoctorCounts();
+      }
+      
+      const dateNow = today;
+      let globalCount = await getGlobalPatientCount() + 1;
+      await setGlobalPatientCount(globalCount);
+      const now = new Date();
+      const monthNum = now.getMonth() + 1;
+      const monthLetter = String.fromCharCode(64 + monthNum);
+      const day = now.getDate().toString().padStart(2, '0');
+      const seq = globalCount.toString().padStart(3, '0');
+      const patientId = `${monthLetter}${day}${seq}`;
+      
+      if (patients.some(p => p.id === patientId)) {
+        alert('ID conflict! Please try again.');
+        return null;
+      }
+
+      const newPatient = {
+        id: patientId,
+        name,
+        contact,
+        gender,
+        age,
+        doctor,
+        notes,
+        bp,
+        weight,
+        amount: 'FREE',
+        temperature,
+        dateAdded: dateNow,
+        rx,
+        visitData: null,
+        isFree: true
+      };
+
+      patients.push(newPatient);
+      await savePatient(newPatient);
+      renderPatientTable();
+      document.getElementById('patientForm').reset();
+      updatePatientCountDisplay();
+      
+      // Print both receipts with FREE amount
+      // Print both receipts with FREE amount
+  const doctorObj = doctors.find(d => (typeof d === 'string' ? d : d.name) === newPatient.doctor);
+  const hasVisitSection = doctorObj && typeof doctorObj !== 'string' && doctorObj.visitSection;
+  
+  if (hasVisitSection) {
+    printCombinedRecordAndVisit(newPatient);
+  } else {
+    printRecord(newPatient.id);
+  }
+}
+
+    async function addPatient() {
+  const newPatient = await savePatientDataFromForm();
+  if (newPatient) {
+    const doctor = doctors.find(d => (typeof d === 'string' ? d : d.name) === newPatient.doctor);
+    const hasVisitSection = doctor && typeof doctor !== 'string' && doctor.visitSection;
+    
+    if (hasVisitSection) {
+      printCombinedRecordAndVisit(newPatient);
+    } else {
+      printRecord(newPatient.id);
+    }
+  }
+}
+
+    async function addPatientAndThermalPrint() {
+  const newPatient = await savePatientDataFromForm();
+  if (newPatient) {
+    const doctor = doctors.find(d => (typeof d === 'string' ? d : d.name) === newPatient.doctor);
+    const hasVisitSection = doctor && typeof doctor !== 'string' && doctor.visitSection;
+    
+    if (hasVisitSection) {
+      printCombinedThermalAndVisit(newPatient);
+    } else {
+      printThermalReceipt(newPatient);
+    }
+  }
+}
+
+    function printVisitForm(patient) {
+  if (!patient) {
+    console.error('No patient provided to printVisitForm');
+    return;
+  }
+  
+  const doctorObj = doctors.find(d => (typeof d === 'string' ? d : d.name) === patient.doctor);
+  const department = doctorObj && typeof doctorObj !== 'string' ? (doctorObj.department || 'General') : 'General';
+  
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  
+  const qrData = JSON.stringify({
+    id: patient.id,
+    name: patient.name,
+    doctor: patient.doctor,
+    age: patient.age,
+    gender: patient.gender,
+    department: department,
+    date: patient.dateAdded,
+    time: timeStr
+  });
+
+  const visitHTML = `
+    <html>
+      <head>
+        <title>Visit Form</title>
+        <style>
+          @page { size: A4; margin: 10mm; }
+          body {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            margin: 0;
+            padding: 10px;
+          }
+          .header {
+            text-align: center;
+            border-bottom: 3px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+          }
+          .header h1 {
+            margin: 3px 0;
+            font-size: 20px;
+          }
+          .header p {
+            margin: 2px 0;
+            font-size: 10px;
+          }
+          .top-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+          }
+          .qr-section {
+            flex: 0 0 130px;
+            border: 2px solid #000;
+            padding: 8px;
+            text-align: center;
+            background: #f9f9f9;
+          }
+          .qr-code {
+            width: 110px;
+            height: 110px;
+            border: 1px solid #666;
+            background: white;
+            margin: 0 auto 5px;
+          }
+          .qr-label {
+            font-size: 9px;
+            font-weight: bold;
+            margin-top: 3px;
+          }
+          .visit-patient-info {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding: 8px;
+            background: #f5f5f5;
+            border: 2px solid #000;
+          }
+          .visit-patient-info div {
+            font-size: 11px;
+            padding: 3px;
+          }
+          .visit-section {
+            margin-bottom: 12px;
+            border: 2px solid #000;
+            padding: 8px;
+            page-break-inside: avoid;
+          }
+          .visit-section-title {
+            font-weight: bold;
+            font-size: 12px;
+            margin-bottom: 8px;
+            padding: 5px;
+            background: #e0e0e0;
+            border-bottom: 1px solid #000;
+          }
+          .visit-checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+          }
+          .visit-checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+          }
+          .visit-checkbox-box {
+            width: 13px;
+            height: 13px;
+            border: 2px solid #000;
+            display: inline-block;
+            flex-shrink: 0;
+          }
+          .visit-checkbox-item label {
+            font-size: 10px;
+          }
+        </style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+      </head>
+      <body>
+        <div class="header">
+          <h1>DARUL SHIFA IMAM KHOMEINI HOSPITAL</h1>
+          <p>Block 3, Hazara Town, Brewery Road, Quetta</p>
+          <p>Phone: 0812857135</p>
+          <p style="font-weight: bold; margin-top: 8px; font-size: 12px;">VISIT FORM</p>
+        </div>
+        
+        <div class="top-section">
+          <div class="qr-section">
+            <div id="qrcode" class="qr-code"></div>
+            <div class="qr-label">Scan to Load Patient</div>
+          </div>
+          
+          <div class="visit-patient-info">
+            <div><strong>Patient ID:</strong> ${patient.id}</div>
+            <div><strong>Name:</strong> ${patient.name}</div>
+            <div><strong>Gender:</strong> ${patient.gender}</div>
+            <div><strong>Age:</strong> ${patient.age} yrs</div>
+            <div><strong>Doctor:</strong> ${patient.doctor}</div>
+            <div><strong>Department:</strong> ${department}</div>
+            <div><strong>Date:</strong> ${patient.dateAdded}</div>
+            <div><strong>Time:</strong> ${timeStr}</div>
+          </div>
+        </div>
+        
+        <div class="visit-section">
+          <div class="visit-section-title">RISK FACTORS</div>
+          <div class="visit-checkbox-grid">
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Hypertension</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Diabetes mellitus</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Lipids</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>CVD</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Stroke</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>HBsAG</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>HCV</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Obesity</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Lab Investigation</label></div>
+          </div>
+        </div>
+        
+        <div class="visit-section">
+          <div class="visit-section-title">PRESENTING COMPLAINTS</div>
+          <div class="visit-checkbox-grid">
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Gastro</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>ARI</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Abdominal Pain</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Malaria</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Flu</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>UTI</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Headache</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Lower Respiratory</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Cough</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Fever</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Constipation</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Diarrhea</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Vomiting</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>SOB</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Anxiety</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Body pain</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>RTA</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Trauma</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Sore throat</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Joint pain</label></div>
+          </div>
+        </div>
+        
+        <div class="visit-section">
+          <div class="visit-section-title">TREATMENT PLAN</div>
+          <div class="visit-checkbox-grid">
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Antibiotics</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Analgesics</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Antipyretics</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Antiemetics</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>IV Fluids</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Nebulization</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Oxygen Therapy</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Wound Debridement</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Immobilization</label></div>
+            <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Vitals Monitoring</label></div>
+          </div>
+        </div>
+        
+        <script>
+          const qrData = '${qrData.replace(/'/g, "\\'")}';
+          setTimeout(function() {
+            new QRCode(document.getElementById("qrcode"), {
+              text: qrData,
+              width: 110,
+              height: 110,
+              colorDark: "#000000",
+              colorLight: "#ffffff",
+              correctLevel: QRCode.CorrectLevel.H
+            });
+          }, 100);
+        <\/script>
+      </body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank', 'width=800,height=1000');
+  
+  if (!printWindow) {
+    console.error('Failed to open print window - popup blocked?');
+    alert('Please allow popups to print the visit form');
+    return;
+  }
+  
+  printWindow.document.write(visitHTML);
+  printWindow.document.close();
+
+  printWindow.onload = function() {
+    setTimeout(function() {
+      printWindow.focus();
+      printWindow.print();
+      setTimeout(function() {
+        printWindow.close();
+      }, 100);
+    }, 1000);
+  };
+}
+
+    function renderPatientTable() {
+      const tbody = document.querySelector('#dataTable tbody');
+      tbody.innerHTML = '';
+      patients.forEach(patient => {
+        const row = document.createElement('tr');
+        const isFree = patient.isFree || false;
+        if (isFree) {
+          row.style.backgroundColor = '#d4edda';
+        }
+        row.innerHTML =
+          `<td>${patient.id}</td>
+           <td>${patient.name}</td>
+           <td>${patient.doctor || 'N/A'}</td>
+           <td>${patient.gender}</td>
+           <td>${patient.age} yrs</td>
+           <td>
+             <button class="table-btn" onclick="printRecord('${patient.id}')">Print</button>
+             <button class="table-btn" onclick="printThermalReceiptById('${patient.id}')" style="margin-left: 0.3rem;">T Print</button>
+           </td>`;
+        tbody.appendChild(row);
+      });
+    }
+
+    function renderLabTable() {
+      const tbody = document.querySelector('#dataTable tbody');
+      tbody.innerHTML = '';
+      labTests.forEach(lab => {
+        const row = document.createElement('tr');
+        row.innerHTML =
+          `<td>${lab.id}</td>
+           <td>${lab.name}</td>
+           <td>${lab.drName || 'N/A'}</td>
+           <td>${lab.gender}</td>
+           <td>${lab.age}</td>
+           <td>
+             <button class="table-btn" onclick="printLabReceipt('${lab.id}')">T Print</button>
+           </td>`;
+        tbody.appendChild(row);
+      });
+    }
+
+    function printThermalReceiptById(patientId) {
+      const patient = patients.find(p => p.id === patientId);
+      if (patient) {
+        printThermalReceipt(patient);
+      }
+    }
+
+    function showSection(section) {
+      currentSection = section;
+      
+      document.querySelectorAll('.sidebar-item').forEach(item => {
+        item.classList.remove('active');
+      });
+      event.target.classList.add('active');
+      
+      document.querySelectorAll('.content-section').forEach(sec => {
+        sec.classList.remove('active');
+      });
+      
+      if (section === 'patient') {
+        document.getElementById('patient-section').classList.add('active');
+        document.getElementById('dataGridTitle').textContent = 'Patient Records';
+        document.getElementById('tableHeader').innerHTML = `
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Dr Name</th>
+            <th>Gender</th>
+            <th>Age</th>
+            <th>Actions</th>
+          </tr>
+        `;
+        middlePanel.classList.remove('hidden');
+        resizer.style.display = 'block';
+        renderPatientTable();
+      } else if (section === 'lab') {
+        document.getElementById('lab-section').classList.add('active');
+        document.getElementById('dataGridTitle').textContent = 'Lab Test Records';
+        document.getElementById('tableHeader').innerHTML = `
+          <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Dr Name</th>
+            <th>Gender</th>
+            <th>Age</th>
+            <th>Actions</th>
+          </tr>
+        `;
+        middlePanel.classList.remove('hidden');
+        resizer.style.display = 'block';
+        renderLabTable();
+      } else if (section === 'admin') {
+        document.getElementById('admin-section').classList.add('active');
+        middlePanel.classList.add('hidden');
+        resizer.style.display = 'none';
+        leftPanel.style.flex = '1 1 100%';
+        renderAdminDoctorsList();
+        renderAdminDepartmentsList();
+        renderAdminTestsList();
+      } else if (section === 'scan') {
+        document.getElementById('scan-section').classList.add('active');
+        middlePanel.classList.add('hidden');
+        resizer.style.display = 'none';
+        leftPanel.style.flex = '1 1 100%';
+      }
+    }
+
+    function processVisitForm() {
+      const fileInput = document.getElementById('qrImageInput');
+      const patientId = document.getElementById('scanPatientId').value.trim();
+      
+      if (!patientId) {
+        alert('Please enter a Patient ID');
+        return;
+      }
+      
+      const patient = patients.find(p => p.id === patientId);
+      if (!patient) {
+        alert('Patient not found with ID: ' + patientId);
+        return;
+      }
+      
+      const file = fileInput.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          document.getElementById('previewImage').src = e.target.result;
+          document.getElementById('formPreview').style.display = 'block';
+        };
+        reader.readAsDataURL(file);
+      }
+      
+      displayPatientForScanning(patient);
+    }
+
+    function displayPatientForScanning(patient) {
+      const resultDiv = document.getElementById('scanResult');
+      const contentDiv = document.getElementById('scanResultContent');
+      
+      let html = `
+        <div style="padding: 1rem; background: white; border-radius: 8px; margin-bottom: 1rem;">
+          <h4 style="margin-bottom: 0.5rem;">Patient Information</h4>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.5rem; font-size: 0.9rem;">
+            <div><strong>ID:</strong> ${patient.id}</div>
+            <div><strong>Name:</strong> ${patient.name}</div>
+            <div><strong>Gender:</strong> ${patient.gender}</div>
+            <div><strong>Age:</strong> ${patient.age} yrs</div>
+            <div><strong>Doctor:</strong> ${patient.doctor}</div>
+            <div><strong>Date:</strong> ${patient.dateAdded}</div>
+          </div>
+        </div>
+        <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">Check the boxes below according to the filled form, then click Save.</p>
+      `;
+      
+      contentDiv.innerHTML = html;
+      
+      // Clear all checkboxes first
+      document.querySelectorAll('[id^="scan_"]').forEach(cb => cb.checked = false);
+      
+      // If patient has existing visit data, pre-fill checkboxes
+      if (patient.visitData) {
+        if (patient.visitData.riskFactors) {
+          patient.visitData.riskFactors.forEach(rf => {
+            const checkbox = Array.from(document.querySelectorAll('[id^="scan_rf_"]'))
+              .find(cb => cb.value === rf);
+            if (checkbox) checkbox.checked = true;
+          });
+        }
+        if (patient.visitData.presentingComplaints) {
+          patient.visitData.presentingComplaints.forEach(pc => {
+            const checkbox = Array.from(document.querySelectorAll('[id^="scan_pc_"]'))
+              .find(cb => cb.value === pc);
+            if (checkbox) checkbox.checked = true;
+          });
+        }
+        if (patient.visitData.treatmentPlan) {
+          patient.visitData.treatmentPlan.forEach(tp => {
+            const checkbox = Array.from(document.querySelectorAll('[id^="scan_tp_"]'))
+              .find(cb => cb.value === tp);
+            if (checkbox) checkbox.checked = true;
+          });
+        }
+      }
+      
+      resultDiv.style.display = 'block';
+    }
+
+    async function saveVisitData() {
+      const patientId = document.getElementById('scanPatientId').value.trim();
+      
+      if (!patientId) {
+        alert('Patient ID not found');
+        return;
+      }
+      
+      const patientIndex = patients.findIndex(p => p.id === patientId);
+      if (patientIndex === -1) {
+        alert('Patient not found');
+        return;
+      }
+      
+      const riskFactors = [];
+      const presentingComplaints = [];
+      const treatmentPlan = [];
+      
+      // Collect checked items
+      document.querySelectorAll('[id^="scan_rf_"]:checked').forEach(cb => riskFactors.push(cb.value));
+      document.querySelectorAll('[id^="scan_pc_"]:checked').forEach(cb => presentingComplaints.push(cb.value));
+      document.querySelectorAll('[id^="scan_tp_"]:checked').forEach(cb => treatmentPlan.push(cb.value));
+      
+      // Update patient with visit data
+      patients[patientIndex].visitData = {
+        riskFactors,
+        presentingComplaints,
+        treatmentPlan,
+        scannedDate: getToday()
+      };
+      
+      await savePatient(patients[patientIndex]);
+      
+      alert('Visit data saved successfully for Patient ' + patientId);
+      
+      // Clear form
+      document.getElementById('scanPatientId').value = '';
+      document.getElementById('qrImageInput').value = '';
+      document.getElementById('formPreview').style.display = 'none';
+      document.getElementById('scanResult').style.display = 'none';
+      document.querySelectorAll('[id^="scan_"]').forEach(cb => cb.checked = false);
+    }
+
+    function deletePatient() {
+      alert("Delete functionality not implemented yet.");
+    }
+
+    function deleteLabTest() {
+      alert("Delete functionality not implemented yet.");
+    }
+
+    async function addLabTest() {
+      const name = document.getElementById('labPatientName').value;
+      const age = document.getElementById('labAge').value;
+      const gender = document.getElementById('labGender').value;
+      const clinic = document.getElementById('labClinic').value;
+      const phone = document.getElementById('labPhone').value;
+      const contact = document.getElementById('labContact').value;
+      const prize = document.getElementById('labPrize').value;
+      const referredBy = document.getElementById('labReferredBy').value;
+      const drName = document.getElementById('labDrName').value;
+      const testName = document.getElementById('labTestName').value;
+      
+      if (!name || !age || !gender || !testName) {
+        alert('Please fill in required fields: Name, Age, Gender, Test Name');
+        return;
+      }
+      
+      const today = getToday();
+      let globalCount = await getGlobalPatientCount() + 1;
+      await setGlobalPatientCount(globalCount);
+      
+      const now = new Date();
+      const monthNum = now.getMonth() + 1;
+      const monthLetter = String.fromCharCode(64 + monthNum);
+      const day = now.getDate().toString().padStart(2, '0');
+      const seq = globalCount.toString().padStart(3, '0');
+      const labId = `L${monthLetter}${day}${seq}`;
+      
+      if (labTests.some(l => l.id === labId)) {
+        alert('ID conflict! Please try again.');
+        return;
+      }
+      
+      const newLabTest = {
+        id: labId,
+        name,
+        age,
+        gender,
+        clinic,
+        phone,
+        contact,
+        prize,
+        referredBy,
+        drName,
+        testName,
+        dateAdded: today
+      };
+      
+      labTests.push(newLabTest);
+      await saveLabTest(newLabTest);
+      renderLabTable();
+      document.getElementById('labForm').reset();
+      
+      printLabReceipt(labId);
+    }
+
+    function printLabReceipt(labId) {
+      const lab = labTests.find(l => l.id === labId);
+      if (!lab) return;
+      
+      const thermalHTML = `
+        <html>
+          <head>
+            <title>Lab Test Receipt</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+                width: 68mm;
+                margin: 3px;
+                padding: 0;
+                text-align: center;
+              }
+              .logo {
+                width: 50mm;
+                height: auto;
+                margin: 5px auto;
+                display: block;
+              }
+              .line {
+                border-top: 1px solid #000;
+                margin: 8px 0;
+              }
+              .details {
+                text-align: left;
+                margin: 10px 0;
+              }
+              .row {
+                display: flex;
+                justify-content: space-between;
+                margin: 4px 0;
+                padding: 0 5px;
+              }
+              .prize {
+                font-size: 16px;
+                font-weight: bold;
+                margin: 10px 0;
+                padding: 5px;
+                border: 1px solid #000;
+              }
+              @media print {
+                body { margin: 2px; }
+              }
+            </style>
+          </head>
+          <body>
+            <img src="logo.png" class="logo" onerror="this.style.display='none'">
+            <div style="font-weight: bold; font-size: 16px;">DARUL SHIFA HOSPITAL</div>
+            <div>Laboratory Department</div>
+            <div>Block 3, Hazara Town, Quetta</div>
+            <div>Phone: 0812857135</div>
+            
+            <div class="line"></div>
+            
+            <div class="details">
+              <div class="row">
+                <span style="font-weight: bold;">Test ID:</span>
+                <span>${lab.id || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Patient Name:</span>
+                <span>${lab.name || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Age:</span>
+                <span>${lab.age || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Gender:</span>
+                <span>${lab.gender || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Clinic:</span>
+                <span>${lab.clinic || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Phone:</span>
+                <span>${lab.phone || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Contact:</span>
+                <span>${lab.contact || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Referred By:</span>
+                <span>${lab.referredBy || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Doctor:</span>
+                <span>${lab.drName || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Test:</span>
+                <span>${lab.testName || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Date:</span>
+                <span>${lab.dateAdded || getToday()}</span>
+              </div>
+            </div>
+            
+            <div class="line"></div>
+            
+            <div class="prize">Prize: PKR ${lab.prize || '0'}</div>
+            
+            <div class="line"></div>
+            
+            <div style="margin: 10px 0;">Thank you for visiting!</div>
+            <div style="font-size: 12px;">Computerized Receipt - Valid without stamp</div>
+          </body>
+        </html>
+      `;
+      
+      const printWindow = window.open('', '_blank', 'width=600,height=800,left=100,top=100');
+      printWindow.document.write(thermalHTML);
+      printWindow.document.close();
+      
+      printWindow.onload = function() {
+        setTimeout(function() {
+          printWindow.focus();
+          printWindow.print();
+          setTimeout(function() {
+            printWindow.close();
+          }, 100);
+        }, 500);
+      };
+    }
+
+    function printRecord(patientId) {
+      const patient = patients.find(p => p.id === patientId);
+      if (!patient) return;
+      const today = getToday();
+      let docCount = 0;
+      if (patient.doctor && doctorCounts[patient.doctor] && doctorCounts[patient.doctor].date === today) {
+        docCount = doctorCounts[patient.doctor].count;
+      }
+      
+      // Get doctor's department
+      const doctorObj = doctors.find(d => (typeof d === 'string' ? d : d.name) === patient.doctor);
+      const department = doctorObj && typeof doctorObj !== 'string' ? (doctorObj.department || 'General') : 'General';
+      
+      const printHTML =
+        `<div class="print-container">
+          <div class="print-header">
+            <img src="logo.png" alt="Hospital Logo" style="object-fit:contain;">
+            <div class="address">
+              <h2>Darul Shifa Imam Khomeini Hospital</h2>
+              <p>Block 3, Hazara Town, Brewery Road, Quetta</p>
+              <p>Phone: 0812857135</p>
+              <div style="margin-left:730px;"><strong>Today's Count:</strong> ${docCount}</div>
+            </div>
+          </div>
+          <div class="print-top-info">
+            <div><strong>Dr Name:</strong> ${patient.doctor || '___________'}</div>
+            <div><strong>Amount:</strong> ${patient.amount === 'FREE' ? '<span style="color: #28a745; font-size: 30px;">FREE</span>' : patient.amount || '___________'}</div>
+            <div><strong>Date:</strong> ${patient.dateAdded || '___________'}</div>
+          </div>
+          <div class="columns">
+            <div class="left-column">
+              <h2 style="background: #f0f0f0; padding: 10px; border-radius: 4px;">${department}</h2>
+              <h2>Clinical Notes</h2>
+              <div><strong>BP:</strong> ${patient.bp || '____________'}</div>
+              <div><strong>Weight:</strong> ${patient.weight || '_______'} kg</div>
+              <div><strong>Temperature:</strong> ${patient.temperature || '_______'}</div>
+            </div>
+            <div class="right-column">
+              <div><strong>Patient ID:</strong> ${patient.id}</div>
+              <div><strong>Patient Name:</strong> ${patient.name}</div>
+              <div><strong>Gender:</strong> ${patient.gender}</div>
+              <div><strong>Age:</strong> ${patient.age} yrs</div>
+              <div><strong>Contact:</strong> ${patient.contact || '___________'}</div>
+              <div class="rx">
+                <h1>RX</h1>
+                <div style="white-space: pre-wrap; font-size: 25px;">${patient.rx || ''}</div>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      const printWindow = window.open('', '', 'width=800,height=600');
+      printWindow.document.write(
+        `<html>
+          <head>
+            <title>Patient Record</title>
+            <style>${document.querySelector('style').textContent}</style>
+          </head>
+          <body>${printHTML}</body>
+        </html>`
+      );
+      printWindow.document.close();
+      printWindow.print();
+    }
+    
+    function printThermalReceipt(patient) {
+      if (!patient) return;
+
+      const today = getToday();
+      let docCount = 0;
+      if (patient.doctor && doctorCounts[patient.doctor] && doctorCounts[patient.doctor].date === today) {
+        docCount = doctorCounts[patient.doctor].count;
+      }
+
+      const thermalHTML = `
+        <html>
+          <head>
+            <title>Receipt</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                font-size: 14px;
+                width: 68mm;
+                margin: 3px;
+                padding: 0;
+                text-align: center;
+              }
+              .logo {
+                width: 50mm;
+                height: auto;
+                margin: 5px auto;
+                display: block;
+              }
+              .line {
+                border-top: 1px solid #000;
+                margin: 8px 0;
+              }
+              .details {
+                text-align: left;
+                margin: 10px 0;
+              }
+              .row {
+                display: flex;
+                justify-content: space-between;
+                margin: 4px 0;
+                padding: 0 5px;
+              }
+              .amount {
+                font-size: 16px;
+                font-weight: bold;
+                margin: 10px 0;
+                padding: 5px;
+                border: 1px solid #000;
+              }
+              @media print {
+                body { margin: 2px; }
+              }
+            </style>
+          </head>
+          <body>
+            <img src="logo.png" class="logo" onerror="this.style.display='none'">
+            <div style="font-weight: bold; font-size: 16px;">DARUL SHIFA HOSPITAL</div>
+            <div>Block 3, Hazara Town, Quetta</div>
+            <div>Phone: 0812857135</div>
+            
+            <div class="line"></div>
+            
+            <div class="details">
+              <div class="row">
+                <span style="font-weight: bold;">Patient ID:</span>
+                <span>${patient.id || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Name:</span>
+                <span>${patient.name || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Doctor:</span>
+                <span>${patient.doctor || 'N/A'}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Date:</span>
+                <span>${patient.dateAdded || today}</span>
+              </div>
+              <div class="row">
+                <span style="font-weight: bold;">Dr. Count:</span>
+                <span>${docCount}</span>
+              </div>
+            </div>
+            
+            <div class="line"></div>
+            
+            <div class="amount">${patient.amount === 'FREE' ? '<span style="color: #28a745;">Amount: FREE</span>' : `Amount: PKR ${patient.amount || '0'}`}</div>
+            
+            <div class="line"></div>
+            
+            <div style="margin: 10px 0;">Thank you for visiting!</div>
+            <div style="font-size: 12px;">Computerized Receipt - Valid without stamp</div>
+          </body>
+        </html>
+      `;
+
+      const printWindow = window.open('', '_blank', 'width=600,height=800,left=100,top=100');
+      
+      printWindow.document.write(thermalHTML);
+      printWindow.document.close();
+
+      printWindow.onload = function() {
+        setTimeout(function() {
+          printWindow.focus();
+          printWindow.print();
+          
+          setTimeout(function() {
+            printWindow.close();
+          }, 100);
+        }, 500);
+      };
+    }
+    function printCombinedRecordAndVisit(patient) {
+  // Get doctor's department
+  const doctorObj = doctors.find(d => (typeof d === 'string' ? d : d.name) === patient.doctor);
+  const department = doctorObj && typeof doctorObj !== 'string' ? (doctorObj.department || 'General') : 'General';
+  
+  const today = getToday();
+  let docCount = 0;
+  if (patient.doctor && doctorCounts[patient.doctor] && doctorCounts[patient.doctor].date === today) {
+    docCount = doctorCounts[patient.doctor].count;
+  }
+  
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  
+  const qrData = JSON.stringify({
+    id: patient.id,
+    name: patient.name,
+    doctor: patient.doctor,
+    age: patient.age,
+    gender: patient.gender,
+    department: department,
+    date: patient.dateAdded,
+    time: timeStr
+  });
+
+  // Combined HTML with both pages
+  const combinedHTML = `
+    <html>
+      <head>
+        <title>Patient Record and Visit Form</title>
+        <style>
+          ${document.querySelector('style').textContent}
+          
+          /* Visit form specific styles */
+          @page { size: A4; margin: 10mm; }
+          .visit-page {
+            page-break-before: always;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            margin: 0;
+            padding: 10px;
+          }
+          .visit-header {
+            text-align: center;
+            border-bottom: 3px solid #000;
+            padding-bottom: 8px;
+            margin-bottom: 12px;
+          }
+          .visit-header h1 {
+            margin: 3px 0;
+            font-size: 30px;
+          }
+          .visit-header p {
+            margin: 2px 0;
+            font-size: 15px;
+          }
+          .visit-top-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+          }
+          .visit-qr-section {
+            flex: 0 0 130px;
+            border: 2px solid #000;
+            padding: 8px;
+            text-align: center;
+            background: #f9f9f9;
+          }
+          .visit-qr-code {
+            width: 110px;
+            height: 110px;
+            border: 1px solid #666;
+            background: white;
+            margin: 0 auto 5px;
+          }
+          .visit-qr-label {
+            font-size: 15px;
+            font-weight: bold;
+            margin-top: 3px;
+          }
+          .visit-patient-info {
+            flex: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 5px;
+            padding: 5px;
+            background: #f5f5f5;
+            border: 2px solid #000;
+          }
+          .visit-patient-info div {
+            font-size: 20px;
+            padding: 3px;
+          }
+          .visit-section {
+            margin-bottom: 20px;
+            border: 2px solid #000;
+            padding: 8px;
+            page-break-inside: avoid;
+          }
+            .visit-sectionline {
+            padding: 10px;
+            gap: 100px;
+            }
+          .visit-section-title {
+            font-weight: bold;
+            font-size: 20px;
+            margin-bottom: 8px;
+            padding: 5px;
+            background: #e0e0e0;
+            border-bottom: 1px solid #000;
+          }
+          .visit-checkbox-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 6px;
+          }
+          .visit-checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+          }
+          .visit-checkbox-box {
+            width: 30px;
+            height: 30px;
+            border: 2px solid #000;
+            display: inline-block;
+            flex-shrink: 0;
+          }
+          .visit-checkbox-item label {
+            font-size: 25px;
+          }
+        </style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+      </head>
+      <body>
+        <!-- PAGE 1: Patient Record -->
+        <div class="print-container">
+          <div class="print-header">
+            <img src="logo.png" alt="Hospital Logo" style="object-fit:contain;">
+            <div class="address">
+              <h2>Darul Shifa Imam Khomeini Hospital</h2>
+              <p>Block 3, Hazara Town, Brewery Road, Quetta</p>
+              <p>Phone: 0812857135</p>
+              <div style="margin-left:730px;"><strong>Today's Count:</strong> ${docCount}</div>
+            </div>
+          </div>
+          <div class="print-top-info">
+            <div><strong>Dr Name:</strong> ${patient.doctor || '___________'}</div>
+            <div><strong>Amount:</strong> ${patient.amount === 'FREE' ? '<span style="color: #28a745; font-size: 30px;">FREE</span>' : patient.amount || '___________'}</div>
+            <div><strong>Date:</strong> ${patient.dateAdded || '___________'}</div>
+          </div>
+          <div class="columns">
+            <div class="left-column">
+              <h2 style="background: #f0f0f0; padding: 10px; border-radius: 4px;">${department}</h2>
+              <h2>Clinical Notes</h2>
+              <div><strong>BP:</strong> ${patient.bp || '____________'}</div>
+              <div><strong>Weight:</strong> ${patient.weight || '_______'} kg</div>
+              <div><strong>Temperature:</strong> ${patient.temperature || '_______'}</div>
+            </div>
+            <div class="right-column">
+              <div><strong>Patient ID:</strong> ${patient.id}</div>
+              <div><strong>Patient Name:</strong> ${patient.name}</div>
+              <div><strong>Gender:</strong> ${patient.gender}</div>
+              <div><strong>Age:</strong> ${patient.age} yrs</div>
+              <div><strong>Contact:</strong> ${patient.contact || '___________'}</div>
+              <div class="rx">
+                <h1>RX</h1>
+                <div style="white-space: pre-wrap; font-size: 25px;">${patient.rx || ''}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PAGE 2: Visit Form -->
+        <div class="visit-page">
+          <div class="visit-header">
+            <h1>DARUL SHIFA IMAM KHOMEINI HOSPITAL</h1>
+            <p>Block 3, Hazara Town, Brewery Road, Quetta</p>
+            <p>Phone: 0812857135</p>
+            <p style="font-weight: bold; margin-top: 8px; font-size: 30px;">VISIT FORM</p>
+          </div>
+          
+          <div class="visit-top-section">
+            <div class="visit-qr-section">
+              <div id="qrcode" class="visit-qr-code"></div>
+              <div class="visit-qr-label">Scan to Load Patient</div>
+            </div>
+            
+            <div class="visit-patient-info">
+              <div><strong>Patient ID:</strong> ${patient.id}</div>
+              <div><strong>Name:</strong> ${patient.name}</div>
+              <div><strong>Gender:</strong> ${patient.gender}</div>
+              <div><strong>Age:</strong> ${patient.age} yrs</div>
+              <div><strong>Doctor:</strong> ${patient.doctor}</div>
+              <div><strong>Department:</strong> ${department}</div>
+              <div><strong>Date:</strong> ${patient.dateAdded}</div>
+              <div><strong>Time:</strong> ${timeStr}</div>
+            </div>
+          </div>
+          
+          <div class="visit-section">
+            <div class="visit-section-title">RISK FACTORS</div>
+            <div class="visit-checkbox-grid">
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Hypertension</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Diabetes mellitus</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Lipids</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>CVD</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Stroke</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>HBsAG</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>HCV</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Obesity</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Lab Investigation</label></div>
+            </div>
+          </div>
+          
+          <div class="visit-section">
+            <div class="visit-section-title">PRESENTING COMPLAINTS</div>
+            <div class="visit-checkbox-grid">
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Gastro</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>ARI</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Abdominal Pain</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Malaria</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Flu</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>UTI</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Headache</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Lower Respiratory</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Cough</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Fever</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Constipation</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Diarrhea</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Vomiting</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>SOB</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Anxiety</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Body pain</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>RTA</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Trauma</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Sore throat</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Joint pain</label></div>
+            </div>
+          </div>
+          
+          <div class="visit-section">
+            <div class="visit-section-title">TREATMENT PLAN</div>
+            <div class="visit-checkbox-grid">
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Antibiotics</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Analgesics</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Antipyretics</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Antiemetics</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>IV Fluids</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Nebulization</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Oxygen Therapy</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Wound Debridement</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Immobilization</label></div>
+              <div class="visit-checkbox-item"><span class="visit-checkbox-box"></span><label>Vitals Monitoring</label></div>
+            </div>
+          </div>
+        </div>
+
+<div class="visit-section">
+            <div class="visit-section-title">OTHERS</div>
+         <div class="visit-sectionline">___________________________________________________________________________________________________________________</div>
+          <div class="visit-sectionline">___________________________________________________________________________________________________________________</div>
+           <div class="visit-sectionline">___________________________________________________________________________________________________________________</div>
+            <div class="visit-sectionline">___________________________________________________________________________________________________________________</div>
+             <div class="visit-sectionline">___________________________________________________________________________________________________________________</div>
+             <div class="visit-sectionline">___________________________________________________________________________________________________________________</div>
+             <div class="visit-sectionline">___________________________________________________________________________________________________________________</div>
+             
+        </div>
+        
+        <script>
+          const qrData = '${qrData.replace(/'/g, "\\'")}';
+          setTimeout(function() {
+            new QRCode(document.getElementById("qrcode"), {
+              text: qrData,
+              width: 110,
+              height: 110,
+              colorDark: "#000000",
+              colorLight: "#ffffff",
+              correctLevel: QRCode.CorrectLevel.H
+            });
+          }, 100);
+        <\/script>
+      </body>
+    </html>
+  `;
+
+  const printWindow = window.open('', '_blank', 'width=800,height=1000');
+  
+  if (!printWindow) {
+    console.error('Failed to open print window - popup blocked?');
+    alert('Please allow popups to print');
+    return;
+  }
+  
+  printWindow.document.write(combinedHTML);
+  printWindow.document.close();
+
+  printWindow.onload = function() {
+    setTimeout(function() {
+      printWindow.focus();
+      printWindow.print();
+      setTimeout(function() {
+        printWindow.close();
+      }, 100);
+    }, 1000);
+  };
+}
+
+function printCombinedThermalAndVisit(patient) {
+  // First print thermal receipt
+  printThermalReceipt(patient);
+  
+  // Then print visit form after a delay
+  setTimeout(() => {
+    printVisitForm(patient);
+  }, 1500);
+}
+
+    function autoFillLabPatientData() {
+        const patientId = document.getElementById('labPatientId').value.trim();
+        
+        if (!patientId) {
+            document.getElementById('labPatientName').value = '';
+            document.getElementById('labAge').value = '';
+            document.getElementById('labGender').value = '';
+            document.getElementById('labContact').value = '';
+            return;
+        }
+        
+        const patient = patients.find(p => p.id === patientId);
+        
+        if (patient) {
+            document.getElementById('labPatientName').value = patient.name || '';
+            document.getElementById('labAge').value = patient.age || '';
+            document.getElementById('labGender').value = patient.gender || '';
+            document.getElementById('labContact').value = patient.contact || '';
+            
+            document.getElementById('labPatientId').style.borderColor = '#28a745';
+            setTimeout(() => {
+                document.getElementById('labPatientId').style.borderColor = '';
+            }, 1000);
+        } else {
+            document.getElementById('labPatientName').value = '';
+            document.getElementById('labAge').value = '';
+            document.getElementById('labGender').value = '';
+            document.getElementById('labContact').value = '';
+            
+            document.getElementById('labPatientId').style.borderColor = '#dc3545';
+            setTimeout(() => {
+                document.getElementById('labPatientId').style.borderColor = '';
+            }, 1000);
+        }
+    }
+
+    function autoFillTestPrice() {
+        const testName = document.getElementById('labTestName').value;
+        const test = testsList.find(t => t.name === testName);
+        
+        if (test) {
+            document.getElementById('labPrize').value = test.price;
+        }
+    }
+
+    async function init() {
+        await migrateData();
+        await loadData();
+        await resetDoctorCountsIfNewDay();
+        renderDoctorList();
+        renderDepartmentsList();
+        renderTestsList();
+        renderPatientTable();
+        
+        const labPatientIdInput = document.getElementById('labPatientId');
+        if (labPatientIdInput) {
+            labPatientIdInput.addEventListener('input', autoFillLabPatientData);
+            labPatientIdInput.addEventListener('change', autoFillLabPatientData);
+        }
+    }
+
+    init();
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const doctorNameElement = document.getElementById('doctorName');
+        if (doctorNameElement) {
+            doctorNameElement.addEventListener('change', updatePatientCountDisplay);
+        } else {
+            console.error('Element with ID "doctorName" not found.');
+        }
+        const patientCountInputElement = document.getElementById('patientCountInput');
+        if (patientCountInputElement) {
+            patientCountInputElement.addEventListener('change', updateDoctorCount);
+        } else {
+            console.error('Element with ID "patientCountInput" not found.');
+        }
+        updatePatientCountDisplay();
+    });
+  </script>
+</body>
+</html>
