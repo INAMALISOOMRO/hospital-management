@@ -64,7 +64,6 @@
           "arch": ["x64"]
         }
       ],
-      "icon": "build/icon.ico",
       "requestedExecutionLevel": "requireAdministrator",
       "publisherName": "Darul Shifa Hospital",
       "verifyUpdateCodeSignature": false
@@ -75,9 +74,6 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Hospital Management",
-      "installerIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico",
       "deleteAppDataOnUninstall": false,
       "runAfterFinish": true,
       "allowElevation": true
@@ -85,7 +81,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "your-github-username",
+        "owner": "INAMALISOOMRO",
         "repo": "hospital-management",
         "private": false,
         "releaseType": "release"
@@ -94,6 +90,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/your-github-username/hospital-management.git"
+    "url": "https://github.com/INAMALISOOMRO/hospital-management.git"
   }
 }
