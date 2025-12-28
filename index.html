@@ -155,6 +155,11 @@
       transform: translateY(0);
     }
 
+    .login-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     .error-message {
       background: #fee;
       color: #c33;
@@ -176,19 +181,6 @@
       display: none;
       border-left: 4px solid #3c3;
     }
-
-    .role-badge {
-      display: inline-block;
-      padding: 4px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-      margin-left: 8px;
-    }
-
-    .role-admin { background: #ff6b6b; color: white; }
-    .role-reception { background: #4ecdc4; color: white; }
-    .role-medical { background: #45b7d1; color: white; }
 
     @media (max-width: 768px) {
       .login-container {
@@ -224,13 +216,13 @@
       <form id="loginForm">
         <div class="form-group">
           <label for="username">Username</label>
-          <input type="text" id="username" placeholder="Enter your username" required>
+          <input type="text" id="username" placeholder="Enter your username" required autocomplete="username">
         </div>
 
         <div class="form-group">
           <label for="password">Password</label>
           <div class="password-container">
-            <input type="password" id="password" placeholder="Enter your password" required>
+            <input type="password" id="password" placeholder="Enter your password" required autocomplete="current-password">
             <button type="button" class="password-toggle" onclick="togglePassword()">👁️</button>
           </div>
         </div>
@@ -239,13 +231,13 @@
           <label for="role">Select Role</label>
           <select id="role" required>
             <option value="">-- Select Your Role --</option>
-            <option value="admin">Admin <span class="role-badge role-admin">Full Access</span></option>
-            <option value="reception">Reception <span class="role-badge role-reception">Patient Management</span></option>
-            <option value="medical">Medical Store <span class="role-badge role-medical">Pharmacy</span></option>
+            <option value="admin">Admin (Full Access)</option>
+            <option value="reception">Reception (Patient Management)</option>
+            <option value="medical">Medical Store (Pharmacy)</option>
           </select>
         </div>
 
-        <button type="submit" class="login-btn">Login</button>
+        <button type="submit" class="login-btn" id="loginBtn">Login</button>
       </form>
     </div>
   </div>
@@ -294,7 +286,7 @@
           // Create default admin
           store.add({
             username: 'admin',
-            password: 'admin123', // In production, this should be hashed
+            password: 'admin123',
             fullName: 'System Administrator',
             role: 'admin',
             status: 'active',
@@ -304,7 +296,6 @@
         }
       };
     }
-
 
     // Toggle password visibility
     function togglePassword() {
@@ -344,12 +335,18 @@
     async function handleLogin(event) {
       event.preventDefault();
       
+      const loginBtn = document.getElementById('loginBtn');
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Logging in...';
+      
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
       const role = document.getElementById('role').value;
 
       if (!username || !password || !role) {
         showError('Please fill in all fields');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Login';
         return;
       }
 
@@ -365,21 +362,29 @@
 
           if (!user) {
             showError('Invalid username or password');
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Login';
             return;
           }
 
           if (user.password !== password) {
             showError('Invalid username or password');
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Login';
             return;
           }
 
           if (user.role !== role) {
             showError(`Access denied. This account is not authorized for ${role} role`);
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Login';
             return;
           }
 
           if (user.status !== 'active') {
             showError('Your account has been deactivated. Please contact administrator');
+            loginBtn.disabled = false;
+            loginBtn.textContent = 'Login';
             return;
           }
 
@@ -421,118 +426,171 @@
 
         request.onerror = function() {
           showError('Database error. Please try again');
+          loginBtn.disabled = false;
+          loginBtn.textContent = 'Login';
         };
 
       } catch (error) {
         console.error('Login error:', error);
         showError('An error occurred. Please try again');
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Login';
       }
     }
 
-    // Check if already logged in
+    // Check if already logged in - FIXED VERSION
     function checkExistingSession() {
-  // Check for force login parameter FIRST
-  const urlParams = new URLSearchParams(window.location.search);
-  const forceLogin = urlParams.get('forceLogin');
-  
-  if (forceLogin === 'true') {
-    console.log('Force login - clearing any existing session');
-    
-    // Clear everything
-    localStorage.clear();
-    sessionStorage.clear();
-    
-    // Clear IndexedDB
-    const dbRequest = indexedDB.open('HospitalAuthDB', 1);
-    dbRequest.onsuccess = function(event) {
-      const db = event.target.result;
-      if (db.objectStoreNames.contains('sessions')) {
-        const transaction = db.transaction(['sessions'], 'readwrite');
-        const store = transaction.objectStore('sessions');
-        store.clear();
-      }
-      db.close();
-    };
-    
-    // Clean up URL without redirect
-    window.history.replaceState({}, document.title, window.location.pathname);
-    
-    // Enable the form
-    document.getElementById('loginForm')?.removeAttribute('disabled');
-    return; // IMPORTANT: Stop here, don't check for session
-  }
-  
-  // Only check for existing session if NOT force login
-  const session = localStorage.getItem('currentSession');
-  if (session) {
-    try {
-      const sessionData = JSON.parse(session);
-      console.log('Existing session found, redirecting...');
+      // CRITICAL FIX: Check for force login parameter FIRST
+      const urlParams = new URLSearchParams(window.location.search);
+      const forceLogin = urlParams.get('forceLogin');
       
-      // Redirect to appropriate page
-      switch(sessionData.role) {
-        case 'admin':
-          window.location.href = 'admin.html';
-          break;
-        case 'reception':
-          window.location.href = 'patients.html';
-          break;
-        case 'medical':
-          window.location.href = 'medicine.html';
-          break;
-        default:
-          // Invalid role, clear session
+      if (forceLogin === 'true') {
+        console.log('Force login - clearing any existing session');
+        
+        // Clear everything
+        localStorage.clear();
+        sessionStorage.clear();
+        
+        // Clear IndexedDB sessions
+        openAuthDB().then(db => {
+          if (db.objectStoreNames.contains('sessions')) {
+            const transaction = db.transaction(['sessions'], 'readwrite');
+            const store = transaction.objectStore('sessions');
+            store.clear();
+          }
+        }).catch(err => console.error('Error clearing sessions:', err));
+        
+        // Clean up URL without redirect
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Re-enable form immediately
+        const loginBtn = document.getElementById('loginBtn');
+        const loginForm = document.getElementById('loginForm');
+        if (loginBtn) loginBtn.disabled = false;
+        if (loginForm) {
+          loginForm.style.pointerEvents = 'auto';
+          loginForm.style.opacity = '1';
+        }
+        
+        // Focus on username field
+        setTimeout(() => {
+          document.getElementById('username')?.focus();
+        }, 100);
+        
+        return; // IMPORTANT: Stop here, don't check for session
+      }
+      
+      // Only check for existing session if NOT force login
+      const session = localStorage.getItem('currentSession');
+      if (session) {
+        try {
+          const sessionData = JSON.parse(session);
+          console.log('Existing session found, redirecting...');
+          
+          // Redirect to appropriate page
+          switch(sessionData.role) {
+            case 'admin':
+              window.location.href = 'admin.html';
+              break;
+            case 'reception':
+              window.location.href = 'patients.html';
+              break;
+            case 'medical':
+              window.location.href = 'medicine.html';
+              break;
+            default:
+              // Invalid role, clear session
+              localStorage.removeItem('currentSession');
+          }
+        } catch (error) {
+          console.error('Invalid session:', error);
           localStorage.removeItem('currentSession');
+        }
       }
-    } catch (error) {
-      console.error('Invalid session:', error);
-      localStorage.removeItem('currentSession');
     }
-  }
-}
 
-    // Initialize
-document.addEventListener('DOMContentLoaded', async function() {
-  try {
-    // FIRST check if this is a force login
-    const urlParams = new URLSearchParams(window.location.search);
-    const forceLogin = urlParams.get('forceLogin');
-    
-    if (forceLogin === 'true') {
-      // Clear everything immediately
-      localStorage.clear();
-      sessionStorage.clear();
-      
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
-      
-      // Initialize DB but don't check session
-      await openAuthDB();
-      await createDefaultAdmin();
-      
-      // Make sure form is enabled
-      const form = document.getElementById('loginForm');
-      if (form) {
-        form.addEventListener('submit', handleLogin);
+    // Initialize - IMPROVED VERSION
+    document.addEventListener('DOMContentLoaded', async function() {
+      try {
+        // CRITICAL FIX: Check URL parameters BEFORE anything else
+        const urlParams = new URLSearchParams(window.location.search);
+        const forceLogin = urlParams.get('forceLogin');
+        
+        if (forceLogin === 'true') {
+          // Clear everything immediately
+          localStorage.clear();
+          sessionStorage.clear();
+          
+          // Clean URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          // Initialize database
+          await openAuthDB();
+          await createDefaultAdmin();
+          
+          // Make sure form is enabled
+          const loginForm = document.getElementById('loginForm');
+          const loginBtn = document.getElementById('loginBtn');
+          if (loginForm) {
+            loginForm.style.pointerEvents = 'auto';
+            loginForm.style.opacity = '1';
+            loginForm.addEventListener('submit', handleLogin);
+          }
+          if (loginBtn) {
+            loginBtn.disabled = false;
+          }
+          
+          // Focus username field
+          setTimeout(() => {
+            document.getElementById('username')?.focus();
+          }, 100);
+          
+          return; // Don't call checkExistingSession
+        }
+        
+        // Normal initialization
+        await openAuthDB();
+        await createDefaultAdmin();
+        checkExistingSession(); // Only call if NOT force login
+        
+        const form = document.getElementById('loginForm');
+        if (form) {
+          form.addEventListener('submit', handleLogin);
+        }
+        
+        // Auto-focus username field
+        document.getElementById('username')?.focus();
+        
+      } catch (error) {
+        console.error('Initialization error:', error);
+        alert('Failed to initialize application: ' + error.message);
       }
+    });
+
+    // ADDITIONAL FIX: Handle window focus to re-enable form
+    window.addEventListener('focus', function() {
+      const loginBtn = document.getElementById('loginBtn');
+      const loginForm = document.getElementById('loginForm');
       
-      return; // Don't call checkExistingSession
-    }
-    
-    // Normal initialization
-    await openAuthDB();
-    await createDefaultAdmin();
-    checkExistingSession(); // Only call if NOT force login
-    
-    const form = document.getElementById('loginForm');
-    if (form) {
-      form.addEventListener('submit', handleLogin);
-    }
-  } catch (error) {
-    console.error('Initialization error:', error);
-    alert('Failed to initialize application: ' + error.message);
-  }
-});
+      // Re-enable form when window gains focus
+      if (loginBtn && !loginBtn.disabled) {
+        loginForm.style.pointerEvents = 'auto';
+        loginForm.style.opacity = '1';
+      }
+    });
+
+    // Handle visibility change
+    document.addEventListener('visibilitychange', function() {
+      if (!document.hidden) {
+        const loginBtn = document.getElementById('loginBtn');
+        const loginForm = document.getElementById('loginForm');
+        
+        if (loginBtn && !loginBtn.disabled) {
+          loginForm.style.pointerEvents = 'auto';
+          loginForm.style.opacity = '1';
+        }
+      }
+    });
   </script>
 </body>
 </html>

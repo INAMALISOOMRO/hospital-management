@@ -335,100 +335,6 @@
         justify-content: space-between;
       }
     }
-
-
-/* autoupdater button */
-.update-section {
-    background: white;
-    border-radius: 15px;
-    padding: 30px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-    margin-bottom: 30px;
-  }
-  
-  .update-button {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    padding: 12px 30px;
-    border: none;
-    border-radius: 8px;
-    font-weight: 600;
-    cursor: pointer;
-    font-size: 16px;
-    transition: all 0.3s;
-  }
-  
-  .update-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-  }
-  
-  .update-status {
-    margin-top: 15px;
-    padding: 12px;
-    border-radius: 8px;
-    display: none;
-    font-size: 14px;
-    font-weight: 600;
-  }
-  
-  .update-status.checking {
-    display: block;
-    background: #e3f2fd;
-    color: #1976d2;
-    border-left: 4px solid #1976d2;
-  }
-  
-  .update-status.available {
-    display: block;
-    background: #fff3e0;
-    color: #f57c00;
-    border-left: 4px solid #f57c00;
-  }
-  
-  .update-status.downloading {
-    display: block;
-    background: #e1f5fe;
-    color: #0277bd;
-    border-left: 4px solid #0277bd;
-  }
-  
-  .update-status.ready {
-    display: block;
-    background: #e8f5e9;
-    color: #2e7d32;
-    border-left: 4px solid #2e7d32;
-  }
-  
-  .update-status.uptodate {
-    display: block;
-    background: #e8f5e9;
-    color: #2e7d32;
-    border-left: 4px solid #2e7d32;
-  }
-  
-  .update-status.error {
-    display: block;
-    background: #ffebee;
-    color: #c62828;
-    border-left: 4px solid #c62828;
-  }
-  
-  .version-info {
-    margin-top: 20px;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 8px;
-  }
-  
-  .version-info p {
-    margin: 5px 0;
-    font-size: 14px;
-  }
-
-
-
-    
   </style>
 </head>
 <body>
@@ -449,32 +355,30 @@
     </div>
   </header>
 
-<!-- autoupdater  -->
-<div class="update-section">
-  <div class="section-header">
-    <h2>Software Updates</h2>
-  </div>
-  
-  <p style="color: #666; margin-bottom: 20px;">
-    Keep your hospital management system up to date with the latest features and security improvements.
-  </p>
-  
-  <button class="update-button" onclick="manualUpdateCheck()">
-    🔄 Check for Updates
-  </button>
-  
-  <div id="updateStatus" class="update-status"></div>
-  
-  <div class="version-info">
-    <p><strong>Current Version:</strong> <span id="currentVersion">Loading...</span></p>
-    <p><strong>Last Checked:</strong> <span id="lastChecked">Never</span></p>
-    <p><strong>Auto-Update:</strong> <span style="color: #2e7d32;">✅ Enabled</span></p>
-  </div>
-</div>
-
-
-
   <div class="container">
+    <!-- Auto-Updater Section -->
+    <div class="section">
+      <div class="section-header">
+        <h2>🔄 Software Updates</h2>
+      </div>
+      
+      <p style="color: #666; margin-bottom: 20px;">
+        Keep your hospital management system up to date with the latest features and security improvements.
+      </p>
+      
+      <button class="btn btn-primary" onclick="manualUpdateCheck()">
+        🔄 Check for Updates
+      </button>
+      
+      <div id="updateStatus" class="alert" style="margin-top: 15px;"></div>
+      
+      <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Current Version:</strong> <span id="currentVersion">Loading...</span></p>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Last Checked:</strong> <span id="lastChecked">Never</span></p>
+        <p style="margin: 5px 0; font-size: 14px;"><strong>Auto-Update:</strong> <span style="color: #2e7d32;">✅ Enabled</span></p>
+      </div>
+    </div>
+
     <!-- Statistics Cards -->
     <div class="dashboard-cards">
       <div class="card">
@@ -595,146 +499,46 @@
       });
     }
 
-// At the top of checkAuthentication() in patients.html, medicine.html, admin.html
-// async function checkAuthentication() {
-//   // Check if we're being redirected from a logout
-//   const urlParams = new URLSearchParams(window.location.search);
-//   if (urlParams.get('logout') === 'true') {
-//     localStorage.clear();
-//     window.location.replace('index.html?forceLogin=true');
-//     return;
-//   }
-  
-//   const session = localStorage.getItem('currentSession');
-  
-//   if (!session) {
-//     alert('Please login first');
-//     window.location.href = 'index.html?forceLogin=true';
-//     return;
-//   }
-  
-//   // ... rest of your existing code
-// }
-
-//  AUTOUPDATER 
-const { app } = require('electron').remote || require('@electron/remote');
-  const { ipcRenderer } = require('electron');
-  
-  // Display current version
-  document.getElementById('currentVersion').textContent = app.getVersion();
-  
-  // Function to show status message
-  function showStatus(message, type) {
-    const statusDiv = document.getElementById('updateStatus');
-    statusDiv.className = 'update-status ' + type;
-    statusDiv.textContent = message;
-    
-    // Update last checked time
-    if (type === 'checking') {
-      document.getElementById('lastChecked').textContent = new Date().toLocaleString();
-    }
-  }
-  
-  // Manual update check
-  async function manualUpdateCheck() {
-    showStatus('🔍 Checking for updates...', 'checking');
-    
-    try {
-      const result = await ipcRenderer.invoke('check-for-updates');
+    // FIXED: Check authentication - CORRECT ROLE FOR ADMIN PAGE
+    async function checkAuthentication() {
+      const session = localStorage.getItem('currentSession');
       
-      if (result.success) {
-        // Wait for update events
-        setTimeout(() => {
-          // If no update found after 5 seconds, show up-to-date
-          if (document.getElementById('updateStatus').classList.contains('checking')) {
-            showStatus('✅ You are running the latest version!', 'uptodate');
-          }
-        }, 5000);
-      } else {
-        showStatus('❌ Update check failed: ' + result.error, 'error');
+      if (!session) {
+        alert('Please login first');
+        window.location.href = 'index.html?forceLogin=true';
+        return null;
       }
-    } catch (error) {
-      showStatus('❌ Error checking for updates: ' + error.message, 'error');
-    }
-  }
-  
-  // Listen for update events from main process
-  ipcRenderer.on('update-checking', () => {
-    showStatus('🔍 Checking for updates...', 'checking');
-  });
-  
-  ipcRenderer.on('update-available', (event, info) => {
-    showStatus(`🎉 New version ${info.version} is available! Downloading...`, 'available');
-  });
-  
-  ipcRenderer.on('update-not-available', () => {
-    showStatus('✅ You are running the latest version!', 'uptodate');
-  });
-  
-  ipcRenderer.on('download-progress', (event, progress) => {
-    const percent = Math.round(progress.percent);
-    const downloaded = (progress.transferred / 1024 / 1024).toFixed(2);
-    const total = (progress.total / 1024 / 1024).toFixed(2);
-    showStatus(`📥 Downloading update: ${percent}% (${downloaded}MB / ${total}MB)`, 'downloading');
-  });
-  
-  ipcRenderer.on('update-downloaded', (event, info) => {
-    showStatus('✅ Update downloaded! Application will restart to install...', 'ready');
-  });
-  
-  ipcRenderer.on('update-error', (event, error) => {
-    showStatus('❌ Update error: ' + error, 'error');
-  });
-  
-  // Auto-hide success messages after 10 seconds
-  setInterval(() => {
-    const statusDiv = document.getElementById('updateStatus');
-    if (statusDiv.classList.contains('uptodate')) {
-      setTimeout(() => {
-        statusDiv.style.display = 'none';
-      }, 10000);
-    }
-  }, 1000);
 
+      try {
+        currentUser = JSON.parse(session);
+        
+        // CRITICAL FIX: This is admin.html, so check for 'admin' role
+        const requiredRole = 'admin'; // Changed from 'reception' to 'admin'
+        
+        if (currentUser.role !== requiredRole) {
+          alert('Access denied. You must be an administrator to access this page.');
+          localStorage.clear();
+          window.location.href = 'index.html?forceLogin=true';
+          return null;
+        }
 
-
-
-
-    // Check authentication
-    function checkAuthentication() {
-  const session = localStorage.getItem('currentSession');
-  
-  if (!session) {
-    alert('Please login first');
-    window.location.href = 'index.html?forceLogin=true';
-    return null;
-  }
-
-  try {
-    const currentUser = JSON.parse(session);
-    
-    // For patients.html use 'reception', for medicine.html use 'medical', for admin.html use 'admin'
-    const requiredRole = 'reception'; // CHANGE THIS based on the page
-    
-    if (currentUser.role !== requiredRole && currentUser.role !== 'admin') {
-      alert('Access denied. You do not have permission to access this page.');
-      localStorage.clear();
-      window.location.href = 'index.html?forceLogin=true';
-      return null;
+        console.log('Admin logged in as:', currentUser.fullName, '(' + currentUser.role + ')');
+        
+        // Update header with current user info
+        const userNameElement = document.getElementById('currentUserName');
+        if (userNameElement) {
+          userNameElement.textContent = currentUser.fullName;
+        }
+        
+        return currentUser;
+      } catch (error) {
+        console.error('Session error:', error);
+        localStorage.clear();
+        window.location.href = 'index.html?forceLogin=true';
+        return null;
+      }
     }
 
-    console.log('Logged in as:', currentUser.fullName, '(' + currentUser.role + ')');
-    return currentUser;
-  } catch (error) {
-    console.error('Session error:', error);
-    localStorage.clear();
-    window.location.href = 'index.html?forceLogin=true';
-    return null;
-  }
-}
-
-// Call this at the start
-checkAuthentication();
     // Show alert
     function showAlert(type, message) {
       const alertId = type === 'success' ? 'successAlert' : 'errorAlert';
@@ -757,6 +561,8 @@ checkAuthentication();
 
         request.onsuccess = function() {
           const users = request.result || [];
+          
+          console.log('Loaded users for statistics:', users.length);
           
           document.getElementById('totalUsers').textContent = users.length;
           document.getElementById('activeUsers').textContent = users.filter(u => u.status === 'active').length;
@@ -783,6 +589,8 @@ checkAuthentication();
         request.onsuccess = function() {
           const users = request.result || [];
           const tbody = document.getElementById('usersTableBody');
+          
+          console.log('Loaded users for table:', users);
           
           if (users.length === 0) {
             tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px;">No users found</td></tr>';
@@ -871,6 +679,7 @@ checkAuthentication();
           const addRequest = store.add(newUser);
           
           addRequest.onsuccess = function() {
+            console.log('User created successfully:', newUser);
             showAlert('success', `User "${fullName}" created successfully!`);
             document.getElementById('createUserForm').reset();
             loadUsers();
@@ -967,68 +776,178 @@ checkAuthentication();
     }
 
     // Logout
-   function logout() {
-  if (confirm('Are you sure you want to logout?')) {
-    // Clear all storage
-    localStorage.clear();
-    sessionStorage.clear();
-    
-    // Redirect to login with force parameter
-    window.location.href = 'index.html?forceLogin=true';
-  }
-}
-// function clearAllData() {
-//   return new Promise((resolve) => {
-//     // Clear localStorage
-//     localStorage.clear();
-//     sessionStorage.clear();
-    
-//     // Clear IndexedDB
-//     const dbNames = ['HospitalAuthDB', 'HospitalDB', 'PharmacyDB'];
-//     let completed = 0;
-    
-//     dbNames.forEach(dbName => {
-//       const request = indexedDB.open(dbName);
-//       request.onsuccess = function(event) {
-//         const db = event.target.result;
-//         const stores = Array.from(db.objectStoreNames);
+    function logout() {
+      if (confirm('Are you sure you want to logout?')) {
+        // Clear all storage
+        localStorage.clear();
+        sessionStorage.clear();
         
-//         if (stores.length > 0) {
-//           const transaction = db.transaction(stores, 'readwrite');
-//           stores.forEach(storeName => {
-//             if (storeName === 'sessions') {
-//               const store = transaction.objectStore(storeName);
-//               store.clear();
-//             }
-//           });
-//         }
-        
-//         db.close();
-//         completed++;
-//         if (completed === dbNames.length) resolve();
-//       };
-      
-//       request.onerror = function() {
-//         completed++;
-//         if (completed === dbNames.length) resolve();
-//       };
-//     });
-//   });
-// }
+        // Redirect to login with force parameter
+        window.location.href = 'index.html?forceLogin=true';
+      }
+    }
+
     // Initialize
     document.addEventListener('DOMContentLoaded', async function() {
       try {
+        console.log('Initializing admin dashboard...');
+        
+        // Initialize auto-updater if in Electron
+        initAutoUpdater();
+        
+        // Open database first
         await openAuthDB();
-        await checkAuth();
+        console.log('Database opened successfully');
+        
+        // Check authentication
+        const user = await checkAuthentication();
+        if (!user) {
+          console.log('Authentication failed, redirecting...');
+          return;
+        }
+        
+        console.log('Authentication successful, loading data...');
+        
+        // Load users and statistics
         await loadUsers();
         await loadStatistics();
         
+        // Attach form submit handler
         document.getElementById('createUserForm').addEventListener('submit', createUser);
+        
+        console.log('Admin dashboard initialized successfully');
       } catch (error) {
         console.error('Initialization error:', error);
         alert('Failed to initialize application: ' + error.message);
       }
     });
+
+    // ============================================
+    // AUTO-UPDATER FUNCTIONALITY
+    // ============================================
+    
+    function initAutoUpdater() {
+      try {
+        // Check if running in Electron
+        if (typeof require !== 'undefined') {
+          const { app } = require('electron').remote || require('@electron/remote');
+          const { ipcRenderer } = require('electron');
+          
+          // Display current version
+          document.getElementById('currentVersion').textContent = app.getVersion();
+          
+          // Listen for update events from main process
+          ipcRenderer.on('update-checking', () => {
+            showUpdateStatus('🔍 Checking for updates...', 'checking');
+          });
+          
+          ipcRenderer.on('update-available', (event, info) => {
+            showUpdateStatus(`🎉 New version ${info.version} is available! Downloading...`, 'available');
+          });
+          
+          ipcRenderer.on('update-not-available', () => {
+            showUpdateStatus('✅ You are running the latest version!', 'uptodate');
+          });
+          
+          ipcRenderer.on('download-progress', (event, progress) => {
+            const percent = Math.round(progress.percent);
+            const downloaded = (progress.transferred / 1024 / 1024).toFixed(2);
+            const total = (progress.total / 1024 / 1024).toFixed(2);
+            showUpdateStatus(`📥 Downloading update: ${percent}% (${downloaded}MB / ${total}MB)`, 'downloading');
+          });
+          
+          ipcRenderer.on('update-downloaded', (event, info) => {
+            showUpdateStatus('✅ Update downloaded! Application will restart to install...', 'ready');
+          });
+          
+          ipcRenderer.on('update-error', (event, error) => {
+            showUpdateStatus('❌ Update error: ' + error, 'error');
+          });
+          
+          console.log('Auto-updater initialized');
+        } else {
+          // Not in Electron - show version as N/A
+          document.getElementById('currentVersion').textContent = 'N/A (Browser Mode)';
+          console.log('Not running in Electron - auto-updater disabled');
+        }
+      } catch (error) {
+        console.log('Auto-updater not available:', error);
+        document.getElementById('currentVersion').textContent = 'N/A';
+      }
+    }
+    
+    // Show update status message
+    function showUpdateStatus(message, type) {
+      const statusDiv = document.getElementById('updateStatus');
+      
+      // Remove all previous classes
+      statusDiv.className = 'alert';
+      
+      // Add appropriate class based on type
+      if (type === 'checking' || type === 'downloading') {
+        statusDiv.className = 'alert alert-info';
+        statusDiv.style.background = '#e3f2fd';
+        statusDiv.style.color = '#1976d2';
+        statusDiv.style.borderLeft = '4px solid #1976d2';
+      } else if (type === 'available') {
+        statusDiv.className = 'alert alert-warning';
+        statusDiv.style.background = '#fff3e0';
+        statusDiv.style.color = '#f57c00';
+        statusDiv.style.borderLeft = '4px solid #f57c00';
+      } else if (type === 'ready' || type === 'uptodate') {
+        statusDiv.className = 'alert alert-success';
+      } else if (type === 'error') {
+        statusDiv.className = 'alert alert-error';
+      }
+      
+      statusDiv.textContent = message;
+      statusDiv.style.display = 'block';
+      
+      // Update last checked time for checking events
+      if (type === 'checking') {
+        document.getElementById('lastChecked').textContent = new Date().toLocaleString();
+      }
+      
+      // Auto-hide success messages after 10 seconds
+      if (type === 'uptodate') {
+        setTimeout(() => {
+          statusDiv.style.display = 'none';
+        }, 10000);
+      }
+    }
+    
+    // Manual update check
+    async function manualUpdateCheck() {
+      try {
+        // Check if running in Electron
+        if (typeof require === 'undefined') {
+          showUpdateStatus('⚠️ Auto-update is only available in the desktop app version', 'error');
+          return;
+        }
+        
+        const { ipcRenderer } = require('electron');
+        
+        showUpdateStatus('🔍 Checking for updates...', 'checking');
+        
+        const result = await ipcRenderer.invoke('check-for-updates');
+        
+        if (result.success) {
+          // Wait for update events
+          setTimeout(() => {
+            // If no update found after 5 seconds, show up-to-date
+            const statusDiv = document.getElementById('updateStatus');
+            if (statusDiv.textContent.includes('Checking')) {
+              showUpdateStatus('✅ You are running the latest version!', 'uptodate');
+            }
+          }, 5000);
+        } else {
+          showUpdateStatus('❌ Update check failed: ' + result.error, 'error');
+        }
+      } catch (error) {
+        console.error('Update check error:', error);
+        showUpdateStatus('⚠️ Auto-update is only available in the desktop app version', 'error');
+      }
+    }
   </script>
 </body>
 </html>
