@@ -825,129 +825,153 @@
     // ============================================
     // AUTO-UPDATER FUNCTIONALITY
     // ============================================
-    
     function initAutoUpdater() {
-      try {
-        // Check if running in Electron
-        if (typeof require !== 'undefined') {
-          const { app } = require('electron').remote || require('@electron/remote');
-          const { ipcRenderer } = require('electron');
-          
-          // Display current version
-          document.getElementById('currentVersion').textContent = app.getVersion();
-          
-          // Listen for update events from main process
-          ipcRenderer.on('update-checking', () => {
-            showUpdateStatus('🔍 Checking for updates...', 'checking');
-          });
-          
-          ipcRenderer.on('update-available', (event, info) => {
-            showUpdateStatus(`🎉 New version ${info.version} is available! Downloading...`, 'available');
-          });
-          
-          ipcRenderer.on('update-not-available', () => {
-            showUpdateStatus('✅ You are running the latest version!', 'uptodate');
-          });
-          
-          ipcRenderer.on('download-progress', (event, progress) => {
-            const percent = Math.round(progress.percent);
-            const downloaded = (progress.transferred / 1024 / 1024).toFixed(2);
-            const total = (progress.total / 1024 / 1024).toFixed(2);
-            showUpdateStatus(`📥 Downloading update: ${percent}% (${downloaded}MB / ${total}MB)`, 'downloading');
-          });
-          
-          ipcRenderer.on('update-downloaded', (event, info) => {
-            showUpdateStatus('✅ Update downloaded! Application will restart to install...', 'ready');
-          });
-          
-          ipcRenderer.on('update-error', (event, error) => {
-            showUpdateStatus('❌ Update error: ' + error, 'error');
-          });
-          
-          console.log('Auto-updater initialized');
-        } else {
-          // Not in Electron - show version as N/A
-          document.getElementById('currentVersion').textContent = 'N/A (Browser Mode)';
-          console.log('Not running in Electron - auto-updater disabled');
-        }
-      } catch (error) {
-        console.log('Auto-updater not available:', error);
-        document.getElementById('currentVersion').textContent = 'N/A';
-      }
-    }
-    
-    // Show update status message
-    function showUpdateStatus(message, type) {
-      const statusDiv = document.getElementById('updateStatus');
+  try {
+    // Check if running in Electron
+    if (typeof require !== 'undefined') {
+      const { app } = require('electron').remote || require('@electron/remote');
+      const { ipcRenderer } = require('electron');
       
-      // Remove all previous classes
-      statusDiv.className = 'alert';
+      // Display current version
+      document.getElementById('currentVersion').textContent = app.getVersion();
       
-      // Add appropriate class based on type
-      if (type === 'checking' || type === 'downloading') {
-        statusDiv.className = 'alert alert-info';
-        statusDiv.style.background = '#e3f2fd';
-        statusDiv.style.color = '#1976d2';
-        statusDiv.style.borderLeft = '4px solid #1976d2';
-      } else if (type === 'available') {
-        statusDiv.className = 'alert alert-warning';
-        statusDiv.style.background = '#fff3e0';
-        statusDiv.style.color = '#f57c00';
-        statusDiv.style.borderLeft = '4px solid #f57c00';
-      } else if (type === 'ready' || type === 'uptodate') {
-        statusDiv.className = 'alert alert-success';
-      } else if (type === 'error') {
-        statusDiv.className = 'alert alert-error';
-      }
-      
-      statusDiv.textContent = message;
-      statusDiv.style.display = 'block';
-      
-      // Update last checked time for checking events
-      if (type === 'checking') {
-        document.getElementById('lastChecked').textContent = new Date().toLocaleString();
-      }
-      
-      // Auto-hide success messages after 10 seconds
-      if (type === 'uptodate') {
-        setTimeout(() => {
-          statusDiv.style.display = 'none';
-        }, 10000);
-      }
-    }
-    
-    // Manual update check
-    async function manualUpdateCheck() {
-      try {
-        // Check if running in Electron
-        if (typeof require === 'undefined') {
-          showUpdateStatus('⚠️ Auto-update is only available in the desktop app version', 'error');
-          return;
-        }
-        
-        const { ipcRenderer } = require('electron');
-        
+      // Listen for update checking
+      ipcRenderer.on('update-checking', () => {
         showUpdateStatus('🔍 Checking for updates...', 'checking');
+      });
+      
+      // Listen for update available
+      ipcRenderer.on('update-available', (event, info) => {
+        showUpdateStatus(`🎉 New version ${info.version} available! Click to download.`, 'available');
+      });
+      
+      // Listen for update not available
+      ipcRenderer.on('update-not-available', () => {
+        showUpdateStatus('✅ You are running the latest version!', 'uptodate');
+      });
+      
+      // Listen for download progress - ENHANCED
+      ipcRenderer.on('download-progress', (event, progress) => {
+        const percent = Math.round(progress.percent);
+        const downloadedMB = (progress.transferred / 1024 / 1024).toFixed(2);
+        const totalMB = (progress.total / 1024 / 1024).toFixed(2);
+        const speedKB = Math.round(progress.bytesPerSecond / 1024);
         
-        const result = await ipcRenderer.invoke('check-for-updates');
+        showUpdateStatus(
+          `📥 Downloading: ${percent}% (${downloadedMB}MB / ${totalMB}MB) - ${speedKB} KB/s`, 
+          'downloading'
+        );
         
-        if (result.success) {
-          // Wait for update events
-          setTimeout(() => {
-            // If no update found after 5 seconds, show up-to-date
-            const statusDiv = document.getElementById('updateStatus');
-            if (statusDiv.textContent.includes('Checking')) {
-              showUpdateStatus('✅ You are running the latest version!', 'uptodate');
-            }
-          }, 5000);
-        } else {
-          showUpdateStatus('❌ Update check failed: ' + result.error, 'error');
-        }
-      } catch (error) {
-        console.error('Update check error:', error);
-        showUpdateStatus('⚠️ Auto-update is only available in the desktop app version', 'error');
-      }
+        // Update progress bar if exists
+        updateProgressBar(percent);
+      });
+      
+      // Listen for update downloaded
+      ipcRenderer.on('update-downloaded', (event, info) => {
+        showUpdateStatus(`✅ Update ${info.version} ready! Restart to install.`, 'ready');
+      });
+      
+      // Listen for update error
+      ipcRenderer.on('update-error', (event, error) => {
+        showUpdateStatus('❌ Update error: ' + error, 'error');
+      });
+      
+      console.log('✅ Auto-updater initialized');
+    } else {
+      // Not in Electron - show N/A
+      document.getElementById('currentVersion').textContent = 'N/A (Browser Mode)';
+      console.log('Not running in Electron - auto-updater disabled');
     }
+  } catch (error) {
+    console.log('Auto-updater not available:', error);
+    document.getElementById('currentVersion').textContent = 'N/A';
+  }
+}
+
+// Enhanced status display with progress bar
+function showUpdateStatus(message, type) {
+  const statusDiv = document.getElementById('updateStatus');
+  
+  // Remove all previous classes
+  statusDiv.className = 'alert';
+  
+  // Add appropriate class based on type
+  if (type === 'checking' || type === 'downloading') {
+    statusDiv.className = 'alert';
+    statusDiv.style.background = '#e3f2fd';
+    statusDiv.style.color = '#1976d2';
+    statusDiv.style.borderLeft = '4px solid #1976d2';
+  } else if (type === 'available') {
+    statusDiv.className = 'alert';
+    statusDiv.style.background = '#fff3e0';
+    statusDiv.style.color = '#f57c00';
+    statusDiv.style.borderLeft = '4px solid #f57c00';
+  } else if (type === 'ready' || type === 'uptodate') {
+    statusDiv.className = 'alert alert-success';
+  } else if (type === 'error') {
+    statusDiv.className = 'alert alert-error';
+  }
+  
+  // Update message
+  statusDiv.innerHTML = message;
+  
+  // Add progress bar for downloading
+  if (type === 'downloading') {
+    statusDiv.innerHTML += `
+      <div style="margin-top: 10px; background: #e0e0e0; border-radius: 10px; overflow: hidden; height: 20px;">
+        <div id="downloadProgressBar" style="width: 0%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); transition: width 0.3s;"></div>
+      </div>
+    `;
+  }
+  
+  statusDiv.style.display = 'block';
+  
+  // Update last checked time
+  if (type === 'checking') {
+    document.getElementById('lastChecked').textContent = new Date().toLocaleString();
+  }
+  
+  // Auto-hide success messages after 10 seconds
+  if (type === 'uptodate' || type === 'ready') {
+    setTimeout(() => {
+      statusDiv.style.display = 'none';
+    }, 10000);
+  }
+}
+
+// Update progress bar
+function updateProgressBar(percent) {
+  const progressBar = document.getElementById('downloadProgressBar');
+  if (progressBar) {
+    progressBar.style.width = percent + '%';
+  }
+}
+
+// Manual update check - ENHANCED
+async function manualUpdateCheck() {
+  try {
+    // Check if running in Electron
+    if (typeof require === 'undefined') {
+      showUpdateStatus('⚠️ Auto-update is only available in the desktop app version', 'error');
+      return;
+    }
+    
+    const { ipcRenderer } = require('electron');
+    
+    showUpdateStatus('🔍 Checking for updates...', 'checking');
+    
+    const result = await ipcRenderer.invoke('check-for-updates');
+    
+    if (!result.success) {
+      showUpdateStatus('❌ Update check failed: ' + result.error, 'error');
+    }
+    
+    // The result will come through the IPC event listeners
+  } catch (error) {
+    console.error('Update check error:', error);
+    showUpdateStatus('⚠️ Auto-update is only available in the desktop app version', 'error');
+  }
+}
   </script>
 </body>
 </html>

@@ -18,9 +18,12 @@ autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
 log.info('App starting...');
 
-// Auto-updater settings
-autoUpdater.autoDownload = true; // Auto-download updates
-autoUpdater.autoInstallOnAppQuit = true; // Install on quit
+// CRITICAL FIX: Configure auto-updater properly
+autoUpdater.autoDownload = false; // Changed to false - we'll manually trigger download
+autoUpdater.autoInstallOnAppQuit = true;
+
+// For testing/debugging - remove in production
+autoUpdater.forceDevUpdateConfig = true;
 
 // ============================================
 // MySQL Configuration
@@ -47,7 +50,6 @@ async function initDatabase() {
     
     dbPool = await mysql.createPool(dbConfig);
     
-    // Test connection
     const connection = await dbPool.getConnection();
     console.log('✅ MySQL connected successfully');
     connection.release();
@@ -83,7 +85,8 @@ function createWindow() {
     minHeight: 700,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false
+      contextIsolation: false,
+      enableRemoteModule: true // Add this for @electron/remote
     },
     icon: path.join(__dirname, 'logo.png'),
     show: false,
@@ -95,12 +98,27 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     
-    // Show update notification in window
+    // Create update progress UI
     mainWindow.webContents.executeJavaScript(`
+      // Create update banner
       const updateBanner = document.createElement('div');
       updateBanner.id = 'update-banner';
-      updateBanner.style.cssText = 'display: none; position: fixed; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px; text-align: center; z-index: 9999; font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,0.3);';
+      updateBanner.style.cssText = 'display: none; position: fixed; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 20px; text-align: center; z-index: 9999; font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,0.3);';
       document.body.appendChild(updateBanner);
+      
+      // Create progress bar container
+      const progressContainer = document.createElement('div');
+      progressContainer.id = 'update-progress-container';
+      progressContainer.style.cssText = 'display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); z-index: 10000; min-width: 400px;';
+      progressContainer.innerHTML = \`
+        <h2 style="margin: 0 0 20px 0; color: #667eea; font-size: 24px;">Downloading Update</h2>
+        <div id="progress-bar-bg" style="width: 100%; height: 30px; background: #e0e0e0; border-radius: 15px; overflow: hidden; margin-bottom: 15px;">
+          <div id="progress-bar-fill" style="width: 0%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); transition: width 0.3s;"></div>
+        </div>
+        <div id="progress-text" style="text-align: center; font-size: 16px; color: #666; margin-bottom: 10px;">0%</div>
+        <div id="progress-details" style="text-align: center; font-size: 14px; color: #999;">Preparing download...</div>
+      \`;
+      document.body.appendChild(progressContainer);
     `);
   });
   
@@ -115,74 +133,107 @@ function createWindow() {
 }
 
 // ============================================
-// Auto-Update Event Handlers
+// Auto-Update Event Handlers - FIXED VERSION
 // ============================================
 
-// Add these to your main.js auto-update section
-// Replace the existing autoUpdater event handlers with these enhanced versions
-
 autoUpdater.on('checking-for-update', () => {
-  log.info('Checking for updates...');
-  sendStatusToWindow('Checking for updates...');
+  log.info('🔍 Checking for updates...');
+  sendStatusToWindow('🔍 Checking for updates...');
   
-  // Send to renderer process for UI update
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('update-checking');
   }
 });
 
 autoUpdater.on('update-available', (info) => {
-  log.info('Update available:', info.version);
-  sendStatusToWindow(`🎉 New version ${info.version} is available! Downloading...`);
+  log.info('🎉 Update available:', info.version);
+  sendStatusToWindow(`🎉 New version ${info.version} is available!`);
   
-  // Send to renderer process
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('update-available', info);
   }
   
+  // Ask user if they want to download
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Update Available',
     message: `A new version ${info.version} is available!`,
-    detail: 'The update is being downloaded in the background. You will be notified when it\'s ready to install.',
-    buttons: ['OK']
+    detail: 'Would you like to download and install it now?',
+    buttons: ['Download Now', 'Later']
+  }).then((result) => {
+    if (result.response === 0) { // Download Now clicked
+      log.info('User chose to download update');
+      sendStatusToWindow('📥 Starting download...');
+      
+      // Show progress UI
+      if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.executeJavaScript(`
+          document.getElementById('update-progress-container').style.display = 'block';
+        `);
+      }
+      
+      // Start download
+      autoUpdater.downloadUpdate();
+    } else {
+      log.info('User chose to download later');
+      sendStatusToWindow('Update postponed. Will be available on next restart.');
+      setTimeout(() => {
+        sendStatusToWindow('');
+      }, 5000);
+    }
   });
 });
 
 autoUpdater.on('update-not-available', (info) => {
-  log.info('Update not available. Current version:', info.version);
-  sendStatusToWindow('You are running the latest version! ✅');
+  log.info('✅ Update not available. Current version:', info.version);
+  sendStatusToWindow('✅ You are running the latest version!');
   
-  // Send to renderer process
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('update-not-available', info);
   }
+  
+  // Auto-hide after 5 seconds
+  setTimeout(() => {
+    sendStatusToWindow('');
+  }, 5000);
 });
 
 autoUpdater.on('error', (err) => {
-  log.error('Error in auto-updater:', err);
-  sendStatusToWindow('❌ Error checking for updates: ' + err.message);
+  log.error('❌ Error in auto-updater:', err);
+  sendStatusToWindow('❌ Update check failed');
   
-  // Send to renderer process
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('update-error', err.message);
+    
+    // Hide progress UI
+    mainWindow.webContents.executeJavaScript(`
+      document.getElementById('update-progress-container').style.display = 'none';
+    `);
   }
   
-  // Don't block the app if update check fails
+  // Show error dialog
+  dialog.showErrorBox(
+    'Update Error',
+    `Failed to check for updates.\n\nError: ${err.message}\n\nPlease check your internet connection and try again later.`
+  );
+  
   setTimeout(() => {
     sendStatusToWindow('');
   }, 5000);
 });
 
 autoUpdater.on('download-progress', (progressObj) => {
-  let log_message = `Download speed: ${Math.round(progressObj.bytesPerSecond / 1024)} KB/s`;
-  log_message += ` - Downloaded ${Math.round(progressObj.percent)}%`;
-  log_message += ` (${Math.round(progressObj.transferred / 1024 / 1024)}MB / ${Math.round(progressObj.total / 1024 / 1024)}MB)`;
+  const percent = Math.round(progressObj.percent);
+  const downloadedMB = (progressObj.transferred / 1024 / 1024).toFixed(2);
+  const totalMB = (progressObj.total / 1024 / 1024).toFixed(2);
+  const speedKB = Math.round(progressObj.bytesPerSecond / 1024);
+  
+  const log_message = `Download speed: ${speedKB} KB/s - Downloaded ${percent}% (${downloadedMB}MB / ${totalMB}MB)`;
   
   log.info(log_message);
-  sendStatusToWindow(`📥 Downloading update: ${Math.round(progressObj.percent)}%`);
+  sendStatusToWindow(`📥 Downloading: ${percent}%`);
   
-  // Send detailed progress to renderer
+  // Update progress UI
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('download-progress', {
       percent: progressObj.percent,
@@ -190,19 +241,36 @@ autoUpdater.on('download-progress', (progressObj) => {
       total: progressObj.total,
       bytesPerSecond: progressObj.bytesPerSecond
     });
+    
+    // Update visual progress bar
+    mainWindow.webContents.executeJavaScript(`
+      const progressFill = document.getElementById('progress-bar-fill');
+      const progressText = document.getElementById('progress-text');
+      const progressDetails = document.getElementById('progress-details');
+      
+      if (progressFill && progressText && progressDetails) {
+        progressFill.style.width = '${percent}%';
+        progressText.textContent = '${percent}%';
+        progressDetails.textContent = '${downloadedMB}MB / ${totalMB}MB - ${speedKB} KB/s';
+      }
+    `);
   }
 });
 
 autoUpdater.on('update-downloaded', (info) => {
-  log.info('Update downloaded. Version:', info.version);
-  sendStatusToWindow('✅ Update downloaded successfully!');
+  log.info('✅ Update downloaded successfully. Version:', info.version);
+  sendStatusToWindow('✅ Update downloaded!');
   
-  // Send to renderer process
   if (mainWindow && mainWindow.webContents) {
     mainWindow.webContents.send('update-downloaded', info);
+    
+    // Hide progress UI
+    mainWindow.webContents.executeJavaScript(`
+      document.getElementById('update-progress-container').style.display = 'none';
+    `);
   }
   
-  // Show dialog with restart option
+  // Show restart dialog
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Update Ready',
@@ -219,6 +287,10 @@ autoUpdater.on('update-downloaded', (info) => {
       
       // Auto-install on next app quit
       autoUpdater.autoInstallOnAppQuit = true;
+      
+      setTimeout(() => {
+        sendStatusToWindow('');
+      }, 5000);
     }
   });
 });
@@ -251,7 +323,7 @@ function sendStatusToWindow(text) {
 }
 
 // ============================================
-// App Lifecycle
+// App Lifecycle - FIXED
 // ============================================
 app.whenReady().then(async () => {
   const connected = await initDatabase();
@@ -263,11 +335,16 @@ app.whenReady().then(async () => {
   
   createWindow();
 
-  // Check for updates after window is created (5 seconds delay)
+  // IMPORTANT: Check for updates after window is fully loaded and user can see the app
+  // Wait 3 seconds to let the window fully render
   setTimeout(() => {
-    log.info('Starting update check...');
-    autoUpdater.checkForUpdatesAndNotify();
-  }, 5000);
+    log.info('🔄 Starting automatic update check...');
+    
+    // Check for updates (will ask user before downloading)
+    autoUpdater.checkForUpdates().catch(err => {
+      log.error('Auto-update check failed:', err);
+    });
+  }, 3000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -290,12 +367,13 @@ app.on('before-quit', async () => {
 });
 
 // ============================================
-// IPC Handler - Manual Update Check
+// IPC Handler - Manual Update Check - FIXED
 // ============================================
 ipcMain.handle('check-for-updates', async () => {
-  log.info('Manual update check requested');
+  log.info('📱 Manual update check requested from UI');
   try {
-    await autoUpdater.checkForUpdates();
+    const result = await autoUpdater.checkForUpdates();
+    log.info('Manual check result:', result);
     return { success: true };
   } catch (error) {
     log.error('Manual update check failed:', error);
