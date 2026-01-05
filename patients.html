@@ -1213,12 +1213,31 @@ if (typeof require !== 'undefined') {
     
     if (updateInfo.table === 'patients') {
       console.log('💥 New patient data detected!');
-      
-      // Force sync from server immediately
       await checkForNewPatients();
-      
-      console.log('✅ Patient data synchronized and table refreshed');
+      console.log('✅ Patient data synchronized');
     }
+    
+    // ✅ NEW: Handle doctor updates
+    if (updateInfo.table === 'doctors') {
+      console.log('👨‍⚕️ Doctor data updated!');
+      await syncDoctorsFromServer();
+      console.log('✅ Doctors synchronized');
+    }
+    
+   // ✅ NEW: Handle lab test updates
+    if (updateInfo.table === 'labTests') {
+      console.log('🧪 Lab test data updated!');
+      await syncLabTestsFromServer();
+      
+      // Force reload the data and render table
+      await loadData();
+      if (currentSection === 'lab') {
+        renderLabTable();
+      }
+      
+      console.log('✅ Lab tests synchronized and table refreshed');
+    }
+    
   });
   
   console.log('✅ Real-time listener active');
@@ -1554,6 +1573,235 @@ async function checkForNewPatients() {
   }
 }
 
+
+// ============================================
+// Sync Doctors from Server
+// ============================================
+async function syncDoctorsFromServer() {
+  if (typeof require === 'undefined') return;
+  
+  try {
+    const { ipcRenderer } = require('electron');
+    
+    const status = await ipcRenderer.invoke('get-db-status');
+    if (!status.connected) return;
+    
+    const result = await ipcRenderer.invoke('get-all-doctors');
+    
+    if (!result.success) return;
+    
+    const serverDoctors = result.doctors || [];
+    
+    console.log(`📥 Server has ${serverDoctors.length} doctors`);
+    
+    // Convert server format to local format
+    doctors = serverDoctors.map(d => ({
+      name: d.name,
+      department: d.department || 'General',
+      visitSection: d.visit_section || false
+    }));
+    
+    // Save to IndexedDB
+    await saveDoctors();
+    
+    // Refresh UI
+    renderDoctorList();
+    if (currentSection === 'admin') {
+      renderAdminDoctorsList();
+    }
+    
+    console.log('✅ Doctors synced and UI updated');
+    
+  } catch (error) {
+    console.error('❌ Error syncing doctors:', error);
+  }
+}
+
+// ============================================
+// Upload Doctor to Server
+// ============================================
+async function uploadDoctorToServer(doctor) {
+  if (typeof require === 'undefined') return false;
+  
+  try {
+    const { ipcRenderer } = require('electron');
+    
+    const status = await ipcRenderer.invoke('get-db-status');
+    if (!status.connected) {
+      console.log('⚠️ Server offline - doctor saved locally only');
+      return false;
+    }
+    
+    console.log('📤 Uploading doctor to server:', doctor.name);
+    
+    const result = await ipcRenderer.invoke('sync-doctor', doctor);
+    
+    if (result.success) {
+      console.log('✅ Doctor uploaded to server!');
+      
+      // Trigger immediate sync
+      setTimeout(() => {
+        ipcRenderer.invoke('trigger-immediate-sync', {
+          table: 'doctors',
+          action: 'create'
+        });
+      }, 500);
+      
+      return true;
+    }
+    
+    return false;
+    
+  } catch (error) {
+    console.error('❌ Upload error:', error);
+    return false;
+  }
+}
+
+// ============================================
+// Sync Lab Tests from Server
+// ============================================
+async function syncLabTestsFromServer() {
+  if (typeof require === 'undefined') return;
+  
+  try {
+    const { ipcRenderer } = require('electron');
+    
+    const status = await ipcRenderer.invoke('get-db-status');
+    if (!status.connected) return;
+    
+    const result = await ipcRenderer.invoke('get-all-lab-tests');
+    
+    if (!result.success) return;
+    
+    const serverLabTests = result.labTests || [];
+    
+    console.log(`📥 Server has ${serverLabTests.length} lab tests`);
+    
+    // Get local lab tests
+    const db = await openDatabase();
+    const transaction = db.transaction(['labTests'], 'readonly');
+    const store = transaction.objectStore('labTests');
+    const localRequest = store.getAll();
+    
+    localRequest.onsuccess = async function() {
+      const localLabTests = localRequest.result || [];
+      const localIds = new Set(localLabTests.map(l => l.id));
+      
+      // Find new lab tests
+      const newLabTests = serverLabTests.filter(sl => !localIds.has(sl.id));
+      
+      if (newLabTests.length > 0) {
+        console.log(`🆕 Found ${newLabTests.length} new lab test(s)!`);
+        
+        const writeTransaction = db.transaction(['labTests'], 'readwrite');
+        const writeStore = writeTransaction.objectStore('labTests');
+        
+        for (const serverLab of newLabTests) {
+          try {
+             const localLab = {
+              id: serverLab.id,
+              name: serverLab.patient_name,           // ✅ FIXED
+              age: serverLab.age || '',
+              gender: serverLab.gender || '',
+              clinic: serverLab.clinic || '',
+              phone: serverLab.phone || '',
+              contact: serverLab.contact || '',
+              prize: serverLab.prize || '',
+              referredBy: serverLab.referred_by || '',
+              drName: serverLab.doctor_name || '',    // ✅ FIXED
+              testName: serverLab.test_name || '',
+              dateAdded: serverLab.date_added || new Date().toLocaleDateString()
+            };
+            writeStore.add(localLab);
+          } catch (err) {
+            console.error('Error adding lab test:', err);
+          }
+        }
+        
+        writeTransaction.oncomplete = async function() {
+          // Reload lab tests array
+          const readDb = await openDatabase();
+          const readTrans = readDb.transaction(['labTests'], 'readonly');
+          const readStore = readTrans.objectStore('labTests');
+          const readReq = readStore.getAll();
+          
+          readReq.onsuccess = function() {
+            labTests = readReq.result;
+            console.log(`📊 Lab tests updated: ${labTests.length} total`);
+            
+            // ✅ ALWAYS refresh table, not just when on lab section
+            renderLabTable();
+            console.log('✅ Lab table refreshed');
+            
+            // Only show alert if we're on lab section
+            if (currentSection === 'lab') {
+              alert(`🔥 ${newLabTests.length} new lab test(s) received!`);
+            }
+          };
+        };
+      }
+    };
+    
+  } catch (error) {
+    console.error('❌ Error syncing lab tests:', error);
+  }
+}
+
+// ============================================
+// Upload Lab Test to Server
+// ============================================
+async function uploadLabTestToServer(labTest) {
+  if (typeof require === 'undefined') {
+    console.log('⚠️ Not in Electron environment');
+    return false;
+  }
+  
+  try {
+    const { ipcRenderer } = require('electron');
+    
+    console.log('🔍 Checking server status...');
+    const status = await ipcRenderer.invoke('get-db-status');
+    console.log('📊 Server status:', status);
+    
+    if (!status.connected) {
+      console.log('⚠️ Server offline - lab test saved locally only');
+      alert('Server offline - lab test saved locally only');
+      return false;
+    }
+    
+    console.log('📤 Uploading lab test to server:', labTest.id);
+    console.log('📦 Lab test data:', labTest);
+    
+    const result = await ipcRenderer.invoke('add-lab-test-to-server', labTest);
+    
+    console.log('📥 Server response:', result);
+    
+    if (result.success) {
+      console.log('✅ Lab test uploaded to server!');
+      alert('✅ Lab test uploaded to server!');
+      
+      // Trigger immediate sync
+      setTimeout(() => {
+        ipcRenderer.invoke('trigger-immediate-sync', {
+          table: 'labTests',
+          action: 'create'
+        });
+      }, 500);
+      
+      return true;
+    } else {
+      console.log('❌ Upload failed:', result.message);
+      alert('Upload failed: ' + result.message);
+      return false;
+    }
+    
+  } catch (error) {
+    console.error('❌ Upload error:', error);
+    alert('Upload error: ' + error.message);
+    return false;
+  }
+}
 // ============================================
 // FUNCTION 3: Upload Patient to Server Immediately
 // ============================================
@@ -2022,6 +2270,12 @@ async function init() {
       await saveDoctors();
       renderDoctorList();
       renderAdminDoctorsList();
+
+      await uploadDoctorToServer({
+  name: newDoctorName,
+  department: newDoctorDept || 'General',
+  visitSection: visitSection
+});
       
       document.getElementById('newDoctorName').value = '';
       document.getElementById('newDoctorDepartment').value = '';
@@ -2270,11 +2524,7 @@ async function init() {
       const seq = globalCount.toString().padStart(3, '0');
       const patientId = `${monthLetter}${day}${seq}`;
       
-      if (patients.some(p => p.id === patientId)) {
-        alert('ID conflict! Please try again.');
-        return null;
-      }
-
+      
       const newPatient = {
         id: patientId,
         name,
@@ -2875,6 +3125,9 @@ async function init() {
       await saveLabTest(newLabTest);
       renderLabTable();
       document.getElementById('labForm').reset();
+
+      // ✅ ADD THIS:
+await uploadLabTestToServer(newLabTest);
       
       printLabReceipt(labId);
     }

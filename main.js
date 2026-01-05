@@ -179,14 +179,17 @@ async function checkForUpdates() {
     if (allWindows.length === 0) return;
     
     // Check each table for new records
+    // Check each table for new records
     const updates = {
       users: await checkTableUpdates('users', 'created_at'),
-      patients: await checkTableUpdates('patients', 'created_at'),  // ✅ ADDED
+      patients: await checkTableUpdates('patients', 'created_at'),
+      doctors: await checkTableUpdates('doctors', 'updated_at'),  // ✅ NEW
+      departments: await checkTableUpdates('departments', 'updated_at'),  // ✅ NEW
+      tests: await checkTableUpdates('tests', 'updated_at'),  // ✅ NEW
+      labTests: await checkTableUpdates('lab_test_records', 'created_at'),  // ✅ NEW
       medicines: await checkTableUpdates('medicines', 'updated_at'),
-      labTests: await checkTableUpdates('lab_test_records', 'created_at'),
       transactions: await checkTableUpdates('transactions', 'created_at')
     };
-    
     // Broadcast updates to all windows
     let hasUpdates = false;
     Object.keys(updates).forEach(table => {
@@ -470,6 +473,184 @@ ipcMain.handle('get-all-patients', async () => {
       message: error.message,
       patients: []
     };
+  }
+});
+
+
+
+// ============================================
+// IPC Handler - Get All Doctors
+// ============================================
+ipcMain.handle('get-all-doctors', async () => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, message: 'Database not connected', doctors: [] };
+    }
+    
+    console.log('📤 Fetching all doctors from server...');
+    
+    const [rows] = await dbPool.query(`
+      SELECT * FROM doctors 
+      ORDER BY updated_at DESC
+    `);
+    
+    console.log(`✅ Found ${rows.length} doctors on server`);
+    
+    return { 
+      success: true, 
+      doctors: rows,
+      count: rows.length
+    };
+    
+  } catch (error) {
+    console.error('❌ Error fetching doctors:', error);
+    return { 
+      success: false, 
+      message: error.message,
+      doctors: []
+    };
+  }
+});
+
+// ============================================
+// IPC Handler - Add/Update Doctor
+// ============================================
+ipcMain.handle('sync-doctor', async (event, doctorData) => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, message: 'Database not connected' };
+    }
+    
+    console.log('📥 Syncing doctor to server:', doctorData.name);
+    
+    await dbPool.query(
+      `INSERT INTO doctors (name, department, visit_section) 
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE 
+         department = VALUES(department),
+         visit_section = VALUES(visit_section),
+         updated_at = CURRENT_TIMESTAMP`,
+      [doctorData.name, doctorData.department || 'General', doctorData.visitSection ? 1 : 0]
+    );
+    
+    console.log('✅ Doctor synced to server');
+    
+    // Trigger immediate update
+    setTimeout(() => checkForUpdates(), 500);
+    
+    return { success: true };
+    
+  } catch (error) {
+    console.error('❌ Error syncing doctor:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// ============================================
+// IPC Handler - Delete Doctor
+// ============================================
+ipcMain.handle('delete-doctor', async (event, doctorName) => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, message: 'Database not connected' };
+    }
+    
+    await dbPool.query('DELETE FROM doctors WHERE name = ?', [doctorName]);
+    
+    console.log('✅ Doctor deleted from server:', doctorName);
+    
+    // Trigger immediate update
+    setTimeout(() => checkForUpdates(), 500);
+    
+    return { success: true };
+    
+  } catch (error) {
+    console.error('❌ Error deleting doctor:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// ============================================
+// IPC Handler - Get All Lab Tests
+// ============================================
+ipcMain.handle('get-all-lab-tests', async () => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, message: 'Database not connected', labTests: [] };
+    }
+    
+    console.log('📤 Fetching all lab tests from server...');
+    
+    const [rows] = await dbPool.query(`
+      SELECT * FROM lab_test_records 
+      ORDER BY created_at DESC
+      LIMIT 1000
+    `);
+    
+    console.log(`✅ Found ${rows.length} lab tests on server`);
+    
+    return { 
+      success: true, 
+      labTests: rows,
+      count: rows.length
+    };
+    
+  } catch (error) {
+    console.error('❌ Error fetching lab tests:', error);
+    return { 
+      success: false, 
+      message: error.message,
+      labTests: []
+    };
+  }
+});
+
+// ============================================
+// IPC Handler - Add Lab Test
+// ============================================
+ipcMain.handle('add-lab-test-to-server', async (event, labData) => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, message: 'Database not connected' };
+    }
+    
+    console.log('📥 Adding lab test to server:', labData.id);
+    
+    // ✅ FIXED: Using correct column names from your database
+    await dbPool.query(
+      `INSERT INTO lab_test_records 
+        (id, patient_name, age, gender, clinic, phone, contact, prize, referred_by, doctor_name, test_name, date_added) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE 
+         patient_name = VALUES(patient_name),
+         prize = VALUES(prize),
+         test_name = VALUES(test_name)`,
+      [
+        labData.id,
+        labData.name,                    // Maps to patient_name
+        labData.age || null,
+        labData.gender || null,
+        labData.clinic || null,
+        labData.phone || null,
+        labData.contact || null,
+        labData.prize || null,
+        labData.referredBy || null,
+        labData.drName || null,          // Maps to doctor_name
+        labData.testName || null,
+        labData.dateAdded || new Date().toISOString().split('T')[0]
+      ]
+    );
+    
+    console.log('✅ Lab test added to server');
+    
+    // Trigger immediate update
+    setTimeout(() => checkForUpdates(), 500);
+    
+    return { success: true };
+    
+  } catch (error) {
+    console.error('❌ Error adding lab test:', error);
+    return { success: false, message: error.message };
   }
 });
 // ============================================
