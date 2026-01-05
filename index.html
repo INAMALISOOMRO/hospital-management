@@ -243,6 +243,10 @@
   </div>
 
   <script>
+    // ============================================
+    // PART 1: FUNCTION DEFINITIONS (Define these FIRST)
+    // ============================================
+    
     // Initialize IndexedDB for authentication
     let authDB;
 
@@ -259,7 +263,7 @@
           if (!db.objectStoreNames.contains('sessions')) {
             db.createObjectStore('sessions', { keyPath: 'sessionId' });
           }
-        };
+        };  
 
         request.onsuccess = function(event) {
           authDB = event.target.result;
@@ -270,6 +274,49 @@
           reject(event.target.error);
         };
       });
+    }
+
+    // ✅ NEW FUNCTION: Force enable login form (MOVED TO TOP)
+    function enableLoginForm() {
+      console.log('🔧 Enabling login form...');
+      
+      const loginBtn = document.getElementById('loginBtn');
+      const loginForm = document.getElementById('loginForm');
+      const usernameInput = document.getElementById('username');
+      const passwordInput = document.getElementById('password');
+      const roleSelect = document.getElementById('role');
+      
+      // Enable button
+      if (loginBtn) {
+        loginBtn.disabled = false;
+        loginBtn.style.pointerEvents = 'auto';
+        loginBtn.style.opacity = '1';
+      }
+      
+      // Enable form
+      if (loginForm) {
+        loginForm.style.pointerEvents = 'auto';
+        loginForm.style.opacity = '1';
+      }
+      
+      // Enable all inputs
+      [usernameInput, passwordInput, roleSelect].forEach(element => {
+        if (element) {
+          element.disabled = false;
+          element.readOnly = false;
+          element.style.pointerEvents = 'auto';
+        }
+      });
+      
+      // Force focus on username field
+      setTimeout(() => {
+        if (usernameInput) {
+          usernameInput.focus();
+          usernameInput.click();
+        }
+      }, 200);
+      
+      console.log('✅ Login form fully enabled and focused');
     }
 
     // Create default admin account if doesn't exist
@@ -445,7 +492,7 @@
       const forceLogin = urlParams.get('forceLogin');
       
       if (forceLogin === 'true') {
-        console.log('Force login - clearing any existing session');
+        console.log('⚠️ Force login - clearing any existing session');
         
         // Clear everything
         localStorage.clear();
@@ -463,19 +510,8 @@
         // Clean up URL without redirect
         window.history.replaceState({}, document.title, window.location.pathname);
         
-        // Re-enable form immediately
-        const loginBtn = document.getElementById('loginBtn');
-        const loginForm = document.getElementById('loginForm');
-        if (loginBtn) loginBtn.disabled = false;
-        if (loginForm) {
-          loginForm.style.pointerEvents = 'auto';
-          loginForm.style.opacity = '1';
-        }
-        
-        // Focus on username field
-        setTimeout(() => {
-          document.getElementById('username')?.focus();
-        }, 100);
+        // ✅ Use the enableLoginForm function
+        enableLoginForm();
         
         return; // IMPORTANT: Stop here, don't check for session
       }
@@ -509,14 +545,22 @@
       }
     }
 
+    // ============================================
+    // PART 2: INITIALIZATION (Runs when page loads)
+    // ============================================
+    
     // Initialize - IMPROVED VERSION
     document.addEventListener('DOMContentLoaded', async function() {
       try {
+        console.log('🚀 Login page initializing...');
+        
         // CRITICAL FIX: Check URL parameters BEFORE anything else
         const urlParams = new URLSearchParams(window.location.search);
         const forceLogin = urlParams.get('forceLogin');
         
         if (forceLogin === 'true') {
+          console.log('⚠️ Force login mode detected');
+          
           // Clear everything immediately
           localStorage.clear();
           sessionStorage.clear();
@@ -528,22 +572,14 @@
           await openAuthDB();
           await createDefaultAdmin();
           
-          // Make sure form is enabled
+          // ✅ Use the enableLoginForm function
+          enableLoginForm();
+          
+          // Attach event listener
           const loginForm = document.getElementById('loginForm');
-          const loginBtn = document.getElementById('loginBtn');
           if (loginForm) {
-            loginForm.style.pointerEvents = 'auto';
-            loginForm.style.opacity = '1';
             loginForm.addEventListener('submit', handleLogin);
           }
-          if (loginBtn) {
-            loginBtn.disabled = false;
-          }
-          
-          // Focus username field
-          setTimeout(() => {
-            document.getElementById('username')?.focus();
-          }, 100);
           
           return; // Don't call checkExistingSession
         }
@@ -559,7 +595,10 @@
         }
         
         // Auto-focus username field
-        document.getElementById('username')?.focus();
+        const usernameField = document.getElementById('username');
+        if (usernameField) {
+          usernameField.focus();
+        }
         
       } catch (error) {
         console.error('Initialization error:', error);
@@ -567,30 +606,25 @@
       }
     });
 
-    // ADDITIONAL FIX: Handle window focus to re-enable form
+    // ✅ FIXED: Handle window focus to re-enable form
     window.addEventListener('focus', function() {
-      const loginBtn = document.getElementById('loginBtn');
-      const loginForm = document.getElementById('loginForm');
-      
-      // Re-enable form when window gains focus
-      if (loginBtn && !loginBtn.disabled) {
-        loginForm.style.pointerEvents = 'auto';
-        loginForm.style.opacity = '1';
-      }
+      console.log('🔍 Window gained focus - ensuring form is enabled');
+      enableLoginForm();
     });
 
     // Handle visibility change
     document.addEventListener('visibilitychange', function() {
       if (!document.hidden) {
-        const loginBtn = document.getElementById('loginBtn');
-        const loginForm = document.getElementById('loginForm');
-        
-        if (loginBtn && !loginBtn.disabled) {
-          loginForm.style.pointerEvents = 'auto';
-          loginForm.style.opacity = '1';
-        }
+        console.log('👁️ Window became visible - ensuring form is enabled');
+        enableLoginForm();
       }
     });
+    
+    // ✅ NEW: Also check on mouseenter
+    document.addEventListener('mouseenter', function() {
+      enableLoginForm();
+    });
+
   </script>
 </body>
 </html>

@@ -864,7 +864,6 @@ function logout() {
   <footer>
     Made by INAM ALI SOOMRO
   </footer>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
 <script>
 // Authentication Check - Add this at the top of your script section
 async function checkAuthentication() {
@@ -895,17 +894,6 @@ async function checkAuthentication() {
 
 // Call this before anything else
 checkAuthentication();
-
-
-
-
-
-
-
-
-
-
-
 
     let patients = [];
     let labTests = [];
@@ -1190,6 +1178,569 @@ checkAuthentication();
         await Promise.all([patientsPromise, labPromise, doctorsPromise, departmentsPromise, testsPromise, countsPromise]);
     }
 
+let syncTimer = null;
+let isSyncing = false;
+
+// ============================================
+// Start automatic sync every 5 seconds
+// ============================================
+function startAutoSync() {
+  console.log('🚀 Starting automatic patient sync...');
+  
+  // Do initial sync
+  syncPatientsFromServer();
+  
+  // Then sync every 5 seconds
+  if (syncTimer) clearInterval(syncTimer);
+  
+  syncTimer = setInterval(() => {
+    syncPatientsFromServer();
+  }, 5000); // Every 5 seconds
+}
+
+// ============================================
+// Sync patients from server
+// ============================================
+if (typeof require !== 'undefined') {
+  const { ipcRenderer } = require('electron');
+  
+  console.log('📡 Setting up real-time patient update listener...');
+  
+
+// Listen for data-updated events from server
+  ipcRenderer.on('data-updated', async (event, updateInfo) => {
+    console.log('🔥 Real-time update received:', updateInfo);
+    
+    if (updateInfo.table === 'patients') {
+      console.log('💥 New patient data detected!');
+      
+      // Force sync from server immediately
+      await checkForNewPatients();
+      
+      console.log('✅ Patient data synchronized and table refreshed');
+    }
+  });
+  
+  console.log('✅ Real-time listener active');
+}
+
+// ============================================
+// STEP 2: Sync from Server Function
+// ============================================
+async function syncPatientsFromServer() {
+  if (typeof require === 'undefined') {
+    console.log('⚠️ Not in Electron, sync disabled');
+    return;
+  }
+  
+  try {
+    const { ipcRenderer } = require('electron');
+    
+    // Check connection status
+    const status = await ipcRenderer.invoke('get-db-status');
+    if (!status.connected) {
+      console.log('⚠️ Server offline, skipping sync');
+      return;
+    }
+    
+    console.log('🔄 Syncing patients from server...');
+    
+    // Get all patients from server
+    const result = await ipcRenderer.invoke('get-all-patients');
+    
+    if (!result.success) {
+      console.log('❌ Failed to get patients from server');
+      return;
+    }
+    
+    const serverPatients = result.patients || [];
+    console.log(`📥 Server has ${serverPatients.length} patients`);
+    
+    if (serverPatients.length === 0) {
+      return;
+    }
+    
+    // Get local patients
+    const db = await openDatabase();
+    const transaction = db.transaction(['patients'], 'readonly');
+    const store = transaction.objectStore('patients');
+    const request = store.getAll();
+    
+    request.onsuccess = async function() {
+      const localPatients = request.result || [];
+      console.log(`💾 Local database has ${localPatients.length} patients`);
+      
+      // Create map of local patient IDs
+      const localIds = new Set(localPatients.map(p => p.id));
+      
+      // Find new patients
+      const newPatients = serverPatients.filter(sp => !localIds.has(sp.id));
+      
+      if (newPatients.length > 0) {
+        console.log(`🆕 Found ${newPatients.length} NEW patient(s)!`);
+        
+        // Add new patients to local database
+        const writeDb = await openDatabase();
+        const writeTransaction = writeDb.transaction(['patients'], 'readwrite');
+        const writeStore = writeTransaction.objectStore('patients');
+        
+        let addedCount = 0;
+        
+        for (const serverPatient of newPatients) {
+          try {
+            const localPatient = {
+              id: serverPatient.id,
+              name: serverPatient.name,
+              contact: serverPatient.contact || '',
+              gender: serverPatient.gender || '',
+              age: serverPatient.age || '',
+              doctor: serverPatient.doctor_name || '',
+              notes: serverPatient.notes || '',
+              bp: serverPatient.bp || '',
+              weight: serverPatient.weight || '',
+              amount: serverPatient.amount || '',
+              temperature: serverPatient.temperature || '',
+              dateAdded: serverPatient.date_added || new Date().toLocaleDateString(),
+              rx: serverPatient.rx || '',
+              visitData: serverPatient.visit_data ? JSON.parse(serverPatient.visit_data) : null,
+              isFree: serverPatient.is_free || false
+            };
+            
+            writeStore.add(localPatient);
+            patients.push(localPatient);
+            addedCount++;
+            
+            console.log(`  ✅ Added patient: ${localPatient.id} - ${localPatient.name}`);
+          } catch (err) {
+            console.error(`  ❌ Error adding patient:`, err.message);
+          }
+        }
+        
+        writeTransaction.oncomplete = function() {
+          console.log(`✅ Successfully added ${addedCount} patient(s)`);
+          
+          // Refresh table
+          if (currentSection === 'patient') {
+            renderPatientTable();
+            console.log('🔄 Table refreshed');
+          }
+        };
+        
+        writeTransaction.onerror = function(e) {
+          console.error('❌ Write error:', e);
+        };
+      } else {
+        console.log('✅ No new patients to sync');
+      }
+    };
+    
+    request.onerror = function(e) {
+      console.error('❌ Read error:', e);
+    };
+    
+  } catch (error) {
+    console.error('❌ Sync error:', error);
+  }
+}
+
+// ============================================
+// Upload patient to server immediately after saving
+// ============================================
+async function uploadPatientNow(patient) {
+  if (typeof require === 'undefined') {
+    console.log('⚠️ Not in Electron, cannot upload');
+    return false;
+  }
+  
+  try {
+    const { ipcRenderer } = require('electron');
+    
+    // Check connection
+    const status = await ipcRenderer.invoke('get-db-status');
+    if (!status.connected) {
+      console.log('⚠️ Server offline - patient saved locally only');
+      return false;
+    }
+    
+    console.log('📤 Uploading patient to server:', patient.id);
+    
+    // Upload to server
+    const result = await ipcRenderer.invoke('add-patient-to-server', {
+      id: patient.id,
+      name: patient.name,
+      contact: patient.contact || '',
+      gender: patient.gender || '',
+      age: patient.age || '',
+      doctor: patient.doctor || '',
+      notes: patient.notes || '',
+      bp: patient.bp || '',
+      weight: patient.weight || '',
+      amount: patient.amount || '',
+      temperature: patient.temperature || '',
+      dateAdded: patient.dateAdded || new Date().toLocaleDateString(),
+      rx: patient.rx || '',
+      visitData: patient.visitData || null,
+      isFree: patient.isFree || false
+    });
+    
+    if (result.success) {
+      console.log('✅ Patient uploaded to server!');
+      
+      // Trigger immediate sync on other clients
+      setTimeout(() => {
+        ipcRenderer.invoke('trigger-immediate-sync', {
+          table: 'patients',
+          action: 'create'
+        });
+      }, 500);
+      
+      return true;
+    } else {
+      console.log('❌ Upload failed:', result.message);
+      return false;
+    }
+    
+  } catch (error) {
+    console.error('❌ Upload error:', error);
+    return false;
+  }
+}
+
+
+// ============================================
+// REAL-TIME SYNC FOR PATIENTS PAGE
+// Add this code to patients.html <script> section (after init() function)
+// ============================================
+
+let realtimePolling = null;
+let lastPatientSync = null;
+
+// ============================================
+// FUNCTION 1: Poll Server for New Patients
+// ============================================
+async function startPatientRealTimeSync() {
+  if (typeof require === 'undefined') {
+    console.log('⚠️ Not in Electron - real-time sync disabled');
+    return;
+  }
+  
+  console.log('🚀 Starting patient real-time sync...');
+  
+  if (realtimePolling) {
+    clearInterval(realtimePolling);
+  }
+  
+  // Poll every 3 seconds
+  realtimePolling = setInterval(async () => {
+    await checkForNewPatients();
+  }, 3000);
+  
+  await checkForNewPatients(); // Do initial check
+}
+// ============================================
+// FUNCTION 2: Check for New Patients from Server
+// ============================================
+async function checkForNewPatients() {
+  if (typeof require === 'undefined') return;
+  
+  try {
+    const { ipcRenderer } = require('electron');
+    
+    // Get connection status first
+    const status = await ipcRenderer.invoke('get-db-status');
+    if (!status.connected) {
+      return; // Server offline, skip check
+    }
+    
+    // Get all patients from server
+    const result = await ipcRenderer.invoke('get-all-patients');
+    
+    if (!result.success) {
+      return;
+    }
+    
+    const serverPatients = result.patients || [];
+    
+    if (serverPatients.length === 0) {
+      return;
+    }
+    
+    console.log(`📥 Checking server... ${serverPatients.length} patients on server`);
+    
+    // Get local patients
+    const db = await openDatabase();
+    const transaction = db.transaction(['patients'], 'readonly');
+    const store = transaction.objectStore('patients');
+    const localRequest = store.getAll();
+    
+    localRequest.onsuccess = async function() {
+      const localPatients = localRequest.result || [];
+      const localIds = new Set(localPatients.map(p => p.id));
+      
+      // Find new patients (exist on server but not locally)
+      const newPatients = serverPatients.filter(sp => !localIds.has(sp.id));
+      
+      if (newPatients.length > 0) {
+        console.log(`🆕 Found ${newPatients.length} new patient(s) from server!`);
+        
+        // Add new patients to local database
+        const writeTransaction = db.transaction(['patients'], 'readwrite');
+        const writeStore = writeTransaction.objectStore('patients');
+        
+        let addedCount = 0;
+        
+        for (const serverPatient of newPatients) {
+          try {
+            // Convert server format to local format
+            const localPatient = {
+              id: serverPatient.id,
+              name: serverPatient.name,
+              contact: serverPatient.contact || '',
+              gender: serverPatient.gender || '',
+              age: serverPatient.age || '',
+              doctor: serverPatient.doctor_name || '',
+              notes: serverPatient.notes || '',
+              bp: serverPatient.bp || '',
+              weight: serverPatient.weight || '',
+              amount: serverPatient.amount || '',
+              temperature: serverPatient.temperature || '',
+              dateAdded: serverPatient.date_added || new Date().toLocaleDateString(),
+              rx: serverPatient.rx || '',
+              visitData: serverPatient.visit_data ? JSON.parse(serverPatient.visit_data) : null,
+              isFree: serverPatient.is_free || false
+            };
+            
+            writeStore.add(localPatient);
+            addedCount++;
+          } catch (err) {
+            console.error('Error adding patient:', err);
+          }
+        }
+        
+       writeTransaction.oncomplete = async function() {
+          console.log(`✅ Added ${addedCount} new patient(s) to local database`);
+          
+          // ⭐ CRITICAL: Reload the patients array from IndexedDB
+          const db = await openDatabase();
+          const readTransaction = db.transaction(['patients'], 'readonly');
+          const readStore = readTransaction.objectStore('patients');
+          const readRequest = readStore.getAll();
+          
+          readRequest.onsuccess = function() {
+            patients = readRequest.result;
+            console.log(`📊 Patients array updated: ${patients.length} total patients`);
+            
+            // Refresh table if on patient section
+            if (currentSection === 'patient') {
+              renderPatientTable();
+              console.log('✅ Table rendered with new data');
+            }
+            
+            // Show notification
+            alert(`🔥 ${addedCount} new patient(s) received from server!`);
+          };
+        };
+      } else {
+        // No new patients
+        if (!lastPatientSync) {
+          console.log('✅ Local database is up to date');
+          lastPatientSync = new Date();
+        }
+      }
+    };
+    
+  } catch (error) {
+    console.error('Error checking for new patients:', error);
+  }
+}
+
+// ============================================
+// FUNCTION 3: Upload Patient to Server Immediately
+// ============================================
+// async function uploadPatientToServer(patient) {
+//   if (typeof require === 'undefined') {
+//     console.log('⚠️ Not in Electron - cannot upload to server');
+//     return { success: false };
+//   }
+  
+//   try {
+//     const { ipcRenderer } = require('electron');
+    
+//     // Check if server is connected
+//     const status = await ipcRenderer.invoke('get-db-status');
+//     if (!status.connected) {
+//       console.log('⚠️ Server offline - patient saved locally only');
+//       return { success: false, message: 'Server offline' };
+//     }
+    
+//     console.log('📤 Uploading patient to server:', patient.id);
+    
+//     // Upload patient
+//     const result = await ipcRenderer.invoke('add-patient-to-server', {
+//       id: patient.id,
+//       name: patient.name,
+//       contact: patient.contact || null,
+//       gender: patient.gender || null,
+//       age: patient.age || null,
+//       doctor: patient.doctor || null,
+//       notes: patient.notes || null,
+//       bp: patient.bp || null,
+//       weight: patient.weight || null,
+//       amount: patient.amount || null,
+//       temperature: patient.temperature || null,
+//       dateAdded: patient.dateAdded || new Date().toLocaleDateString(),
+//       rx: patient.rx || null,
+//       visitData: patient.visitData || null,
+//       isFree: patient.isFree || false
+//     });
+    
+//     if (result.success) {
+//       console.log('✅ Patient uploaded to server successfully');
+      
+//       // Trigger immediate check on other clients
+//       await ipcRenderer.invoke('trigger-immediate-sync', {
+//         table: 'patients',
+//         action: 'create'
+//       });
+      
+//       return { success: true };
+//     } else {
+//       console.log('❌ Failed to upload patient:', result.message);
+//       return { success: false, message: result.message };
+//     }
+    
+//   } catch (error) {
+//     console.error('Error uploading patient:', error);
+//     return { success: false, message: error.message };
+//   }
+// }
+
+// ============================================
+// FUNCTION 4: Modified savePatientDataFromForm
+// Replace your existing function with this enhanced version
+// ============================================
+async function savePatientDataFromForm() {
+      await resetDoctorCountsIfNewDay();
+      const name = document.getElementById('patientName').value;
+      const contact = document.getElementById('contactNumber').value;
+      const gender = document.getElementById('gender').value;
+      const age = document.getElementById('patientAge').value;
+      const doctor = document.getElementById('doctorName').value;
+      const notes = document.getElementById('clinicalNotes').value;
+      const bp = document.getElementById('bp').value;
+      const weight = document.getElementById('weight').value;
+      const amount = document.getElementById('amount').value;
+      const temperature = document.getElementById('temperature').value;
+      const rx = '';
+      const today = getToday();
+
+      if (doctor && !doctors.some(d => (typeof d === 'string' ? d : d.name) === doctor)) {
+        doctors.push({ name: doctor, department: 'General', visitSection: false });
+        await saveDoctors();
+        renderDoctorList();
+      }
+      if (doctor) {
+        if (doctorCounts[doctor] && doctorCounts[doctor].date === today) {
+          doctorCounts[doctor].count++;
+        } else {
+          doctorCounts[doctor] = { date: today, count: 1 };
+        }
+        await saveDoctorCounts();
+      }
+      
+      const dateNow = today;
+      const now = new Date();
+      const monthNum = now.getMonth() + 1;
+      const monthLetter = String.fromCharCode(64 + monthNum);
+      const day = now.getDate().toString().padStart(2, '0');
+      
+      // 🔧 FIX: Find next available ID automatically
+      let globalCount = await getGlobalPatientCount();
+      let patientId = '';
+      let attempts = 0;
+      const maxAttempts = 1000;
+      
+      do {
+        globalCount++;
+        const seq = globalCount.toString().padStart(3, '0');
+        patientId = `${monthLetter}${day}${seq}`;
+        attempts++;
+        
+        if (attempts > maxAttempts) {
+          alert('Unable to generate unique patient ID. Please contact support.');
+          return null;
+        }
+      } while (patients.some(p => p.id === patientId));
+      
+      // Save the new count
+      await setGlobalPatientCount(globalCount);
+      
+      console.log(`✅ Generated unique ID: ${patientId} (attempt ${attempts})`);
+
+      const newPatient = {
+        id: patientId,
+        name,
+        contact,
+        gender,
+        age,
+        doctor,
+        notes,
+        bp,
+        weight,
+        amount,
+        temperature,
+        dateAdded: dateNow,
+        rx,
+        visitData: null,
+        isFree: false
+      };
+      
+      // 1. Save to local IndexedDB first
+      patients.push(newPatient);
+      await savePatient(newPatient);
+      renderPatientTable();
+      document.getElementById('patientForm').reset();
+      updatePatientCountDisplay();
+      
+      console.log('💾 Patient saved locally:', patientId);
+      
+      // 2. Upload to server immediately
+      const uploaded = await uploadPatientNow(newPatient);
+      
+      if (uploaded) {
+        console.log('🚀 ✅ Patient synced to server - other PCs will receive it!');
+      } else {
+        console.log('⚠️ Patient saved locally but not synced to server');
+      }
+      
+      return newPatient;
+    }
+
+// ============================================
+// FUNCTION 5: Start Real-Time Sync on Page Load
+// Add this to your existing init() function
+// ============================================
+async function init() {
+  await migrateData();
+  await loadData();
+  await resetDoctorCountsIfNewDay();
+  renderDoctorList();
+  renderDepartmentsList();
+  renderTestsList();
+  renderPatientTable();
+  
+  const labPatientIdInput = document.getElementById('labPatientId');
+  if (labPatientIdInput) {
+    labPatientIdInput.addEventListener('input', autoFillLabPatientData);
+    labPatientIdInput.addEventListener('change', autoFillLabPatientData);
+  }
+  
+  console.log('🚀 Starting real-time patient sync...');
+  await startPatientRealTimeSync();  // ✅ This starts the polling
+  
+  console.log('✅ Patient page initialized with real-time sync');
+}
+
     async function savePatient(patient) {
         const db = await openDatabase();
         const transaction = db.transaction(['patients'], 'readwrite');
@@ -1277,7 +1828,12 @@ checkAuthentication();
     }
 
     function getToday() {
-      return new Date().toLocaleDateString();
+      // Return date in MySQL format: YYYY-MM-DD
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     }
 
     async function resetDoctorCountsIfNewDay() {
@@ -1605,76 +2161,76 @@ checkAuthentication();
       renderAdminTestsList();
     }
 
-    async function savePatientDataFromForm() {
-      await resetDoctorCountsIfNewDay();
-      const name = document.getElementById('patientName').value;
-      const contact = document.getElementById('contactNumber').value;
-      const gender = document.getElementById('gender').value;
-      const age = document.getElementById('patientAge').value;
-      const doctor = document.getElementById('doctorName').value;
-      const notes = document.getElementById('clinicalNotes').value;
-      const bp = document.getElementById('bp').value;
-      const weight = document.getElementById('weight').value;
-      const amount = document.getElementById('amount').value;
-      const temperature = document.getElementById('temperature').value;
-      const rx = '';
-      const today = getToday();
+//     async function savePatientDataFromForm() {
+//       await resetDoctorCountsIfNewDay();
+//       const name = document.getElementById('patientName').value;
+//       const contact = document.getElementById('contactNumber').value;
+//       const gender = document.getElementById('gender').value;
+//       const age = document.getElementById('patientAge').value;
+//       const doctor = document.getElementById('doctorName').value;
+//       const notes = document.getElementById('clinicalNotes').value;
+//       const bp = document.getElementById('bp').value;
+//       const weight = document.getElementById('weight').value;
+//       const amount = document.getElementById('amount').value;
+//       const temperature = document.getElementById('temperature').value;
+//       const rx = '';
+//       const today = getToday();
 
-      if (doctor && !doctors.some(d => (typeof d === 'string' ? d : d.name) === doctor)) {
-        doctors.push({ name: doctor, department: 'General', visitSection: false });
-        await saveDoctors();
-        renderDoctorList();
-      }
-      if (doctor) {
-        if (doctorCounts[doctor] && doctorCounts[doctor].date === today) {
-          doctorCounts[doctor].count++;
-        } else {
-          doctorCounts[doctor] = { date: today, count: 1 };
-        }
-        await saveDoctorCounts();
-      }
+//       if (doctor && !doctors.some(d => (typeof d === 'string' ? d : d.name) === doctor)) {
+//         doctors.push({ name: doctor, department: 'General', visitSection: false });
+//         await saveDoctors();
+//         renderDoctorList();
+//       }
+//       if (doctor) {
+//         if (doctorCounts[doctor] && doctorCounts[doctor].date === today) {
+//           doctorCounts[doctor].count++;
+//         } else {
+//           doctorCounts[doctor] = { date: today, count: 1 };
+//         }
+//         await saveDoctorCounts();
+//       }
       
-      const dateNow = today;
-      let globalCount = await getGlobalPatientCount() + 1;
-      await setGlobalPatientCount(globalCount);
-      const now = new Date();
-      const monthNum = now.getMonth() + 1;
-      const monthLetter = String.fromCharCode(64 + monthNum);
-      const day = now.getDate().toString().padStart(2, '0');
-      const seq = globalCount.toString().padStart(3, '0');
-      const patientId = `${monthLetter}${day}${seq}`;
+//       const dateNow = today;
+//       let globalCount = await getGlobalPatientCount() + 1;
+//       await setGlobalPatientCount(globalCount);
+//       const now = new Date();
+//       const monthNum = now.getMonth() + 1;
+//       const monthLetter = String.fromCharCode(64 + monthNum);
+//       const day = now.getDate().toString().padStart(2, '0');
+//       const seq = globalCount.toString().padStart(3, '0');
+//       const patientId = `${monthLetter}${day}${seq}`;
       
-      if (patients.some(p => p.id === patientId)) {
-        alert('ID conflict! Please try again.');
-        return null;
-      }
+//       if (patients.some(p => p.id === patientId)) {
+//         alert('ID conflict! Please try again.');
+//         return null;
+//       }
 
-      const newPatient = {
-        id: patientId,
-        name,
-        contact,
-        gender,
-        age,
-        doctor,
-        notes,
-        bp,
-        weight,
-        amount,
-        temperature,
-        dateAdded: dateNow,
-        rx,
-        visitData: null,
-        isFree: false
-      };
+//       const newPatient = {
+//         id: patientId,
+//         name,
+//         contact,
+//         gender,
+//         age,
+//         doctor,
+//         notes,
+//         bp,
+//         weight,
+//         amount,
+//         temperature,
+//         dateAdded: dateNow,
+//         rx,
+//         visitData: null,
+//         isFree: false
+//       };
 
-      patients.push(newPatient);
-      await savePatient(newPatient);
-      renderPatientTable();
-      document.getElementById('patientForm').reset();
-      updatePatientCountDisplay();
+//       patients.push(newPatient);
+//       await savePatient(newPatient);
+//       renderPatientTable();
+//       document.getElementById('patientForm').reset();
+//       updatePatientCountDisplay();
       
-      return newPatient;
-    }
+//       return newPatient;
+//     }
 
     async function addPatientFree() {
       await resetDoctorCountsIfNewDay();

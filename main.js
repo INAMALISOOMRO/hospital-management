@@ -1,79 +1,608 @@
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const mysql = require('mysql2/promise');
-const bcrypt = require('bcryptjs');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 require('dotenv').config();
 
 let mainWindow;
 let dbPool;
+let dbConnected = false;
+let syncInterval;
+let reconnectInterval;
+let connectionCheckInterval;
+let pollingInterval; // NEW: For real-time polling
 
 // ============================================
-// Auto-Update Configuration
-// ============================================
-
-// Configure logging for updates
-autoUpdater.logger = log;
-autoUpdater.logger.transports.file.level = 'info';
-log.info('App starting...');
-
-// CRITICAL FIX: Configure auto-updater properly
-autoUpdater.autoDownload = false; // Changed to false - we'll manually trigger download
-autoUpdater.autoInstallOnAppQuit = true;
-
-// For testing/debugging - remove in production
-autoUpdater.forceDevUpdateConfig = true;
-
-// ============================================
-// MySQL Configuration
+// Enhanced MySQL Configuration
 // ============================================
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  port: process.env.DB_PORT || 3306,
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || `@Inamalisoomro90mysql`,
+  host: process.env.DB_HOST || '192.168.1.12',
+  port: parseInt(process.env.DB_PORT) || 3306,
+  user: process.env.DB_USER || 'hospital_user',
+  password: process.env.DB_PASSWORD || '@Inamalisoomro90mysql',
   database: process.env.DB_NAME || 'hospital_management',
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  connectTimeout: 10000,
+  acquireTimeout: 10000,
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 10000
 };
 
 // ============================================
-// Database Connection
+// NEW: Track Last Sync Timestamps
+// ============================================
+let lastSyncTimestamps = {
+  users: null,
+  patients: null,
+  medicines: null,
+  labTests: null,
+  transactions: null
+};
+
+// ============================================
+// Enhanced Database Connection
 // ============================================
 async function initDatabase() {
   try {
-    console.log('Connecting to MySQL Server...');
-    console.log('Host:', dbConfig.host);
-    console.log('Database:', dbConfig.database);
+    console.log('\n========================================');
+    console.log('🔄 Attempting MySQL Connection...');
+    console.log('========================================');
+    console.log('📍 Host:', dbConfig.host);
+    console.log('📍 Port:', dbConfig.port);
+    console.log('📍 Database:', dbConfig.database);
+    console.log('📍 User:', dbConfig.user);
+    console.log('========================================\n');
     
-    dbPool = await mysql.createPool(dbConfig);
+    if (dbPool) {
+      try {
+        await dbPool.end();
+        console.log('🔌 Closed old connection pool');
+      } catch (err) {
+        console.log('⚠️ Error closing old pool:', err.message);
+      }
+    }
     
+    // Test basic network connectivity
+    const net = require('net');
+    const canConnect = await new Promise((resolve) => {
+      const socket = new net.Socket();
+      socket.setTimeout(3000);
+      
+      socket.on('connect', () => {
+        console.log('✅ Network connection to MySQL server successful');
+        socket.destroy();
+        resolve(true);
+      });
+      
+      socket.on('timeout', () => {
+        console.log('❌ Connection timeout - server not reachable');
+        socket.destroy();
+        resolve(false);
+      });
+      
+      socket.on('error', (err) => {
+        console.log('❌ Network error:', err.code);
+        socket.destroy();
+        resolve(false);
+      });
+      
+      socket.connect(dbConfig.port, dbConfig.host);
+    });
+    
+    if (!canConnect) {
+      throw new Error('Cannot reach MySQL server');
+    }
+    
+    console.log('🏗️ Creating MySQL connection pool...');
+    dbPool = mysql.createPool(dbConfig);
+    
+    console.log('🧪 Testing MySQL authentication...');
     const connection = await dbPool.getConnection();
-    console.log('✅ MySQL connected successfully');
+    console.log('✅ MySQL authentication successful!');
+    
+    const [rows] = await connection.query('SELECT COUNT(*) as count FROM users');
+    console.log('✅ Database access confirmed -', rows[0].count, 'users found');
+    
     connection.release();
+    
+    dbConnected = true;
+    console.log('\n🎉 DATABASE CONNECTED SUCCESSFULLY!\n');
+    
+    notifyConnectionStatus(true);
+    
+    // NEW: Start real-time polling
+    startRealTimePolling();
+    
+    if (reconnectInterval) {
+      clearInterval(reconnectInterval);
+      reconnectInterval = null;
+    }
     
     return true;
   } catch (error) {
-    console.error('❌ MySQL connection failed:', error.message);
+    console.error('\n❌ ========================================');
+    console.error('❌ MySQL Connection FAILED');
+    console.error('❌ ========================================');
+    console.error('Error:', error.message);
+    console.error('Code:', error.code);
+    console.error('========================================\n');
     
-    dialog.showErrorBox(
-      'Database Connection Error',
-      `Failed to connect to MySQL Server.\n\n` +
-      `Host: ${dbConfig.host}\n` +
-      `Database: ${dbConfig.database}\n\n` +
-      `Error: ${error.message}\n\n` +
-      `Please check:\n` +
-      `1. MySQL Server is running\n` +
-      `2. Database exists\n` +
-      `3. Credentials in .env file are correct`
-    );
+    dbConnected = false;
+    notifyConnectionStatus(false);
+    
+    if (!reconnectInterval) {
+      console.log('⏰ Setting up auto-reconnect (every 30 seconds)...');
+      reconnectInterval = setInterval(() => {
+        console.log('🔄 Attempting to reconnect...');
+        initDatabase();
+      }, 30000);
+    }
     
     return false;
   }
 }
 
+// ============================================
+// NEW: Real-Time Polling System
+// ============================================
+function startRealTimePolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+  }
+  
+  console.log('🚀 Starting real-time polling (every 3 seconds)...');
+  
+  // Poll every 3 seconds for real-time updates
+  pollingInterval = setInterval(async () => {
+    if (!dbConnected) return;
+    
+    try {
+      // Check for new/updated data
+      await checkForUpdates();
+    } catch (error) {
+      console.error('Polling error:', error.message);
+    }
+  }, 3000); // 3 seconds for near real-time
+}
+
+// ============================================
+// NEW: Check for Updates
+// ============================================
+async function checkForUpdates() {
+  try {
+    const BrowserWindow = require('electron').BrowserWindow;
+    const allWindows = BrowserWindow.getAllWindows();
+    
+    if (allWindows.length === 0) return;
+    
+    // Check each table for new records
+    const updates = {
+      users: await checkTableUpdates('users', 'created_at'),
+      patients: await checkTableUpdates('patients', 'created_at'),  // ✅ ADDED
+      medicines: await checkTableUpdates('medicines', 'updated_at'),
+      labTests: await checkTableUpdates('lab_test_records', 'created_at'),
+      transactions: await checkTableUpdates('transactions', 'created_at')
+    };
+    
+    // Broadcast updates to all windows
+    let hasUpdates = false;
+    Object.keys(updates).forEach(table => {
+      if (updates[table].hasNew) {
+        hasUpdates = true;
+        
+        console.log(`📢 Broadcasting ${table} update to ${allWindows.length} window(s)`);
+        
+        allWindows.forEach(window => {
+          if (window && window.webContents) {
+            window.webContents.send('data-updated', {
+              table: table,
+              data: updates[table].newData,
+              timestamp: new Date().toISOString()
+            });
+          }
+        });
+      }
+    });
+    
+    if (hasUpdates) {
+      console.log('📥 New data detected and broadcasted to all clients');
+    }
+    
+  } catch (error) {
+    console.error('Error checking for updates:', error.message);
+  }
+}
+
+
+// ============================================
+// NEW: Check Specific Table for Updates
+// ============================================
+async function checkTableUpdates(tableName, timestampColumn) {
+  try {
+    if (!lastSyncTimestamps[tableName]) {
+      // First time - get latest timestamp only
+      const [rows] = await dbPool.query(
+        `SELECT MAX(${timestampColumn}) as latest FROM ${tableName}`
+      );
+      lastSyncTimestamps[tableName] = rows[0].latest || new Date().toISOString();
+      return { hasNew: false, newData: [] };
+    }
+    
+    // Check for records newer than last sync
+    const [rows] = await dbPool.query(
+      `SELECT * FROM ${tableName} WHERE ${timestampColumn} > ? ORDER BY ${timestampColumn} DESC LIMIT 100`,
+      [lastSyncTimestamps[tableName]]
+    );
+    
+    if (rows.length > 0) {
+      // Update last sync timestamp
+      lastSyncTimestamps[tableName] = rows[0][timestampColumn];
+      return { hasNew: true, newData: rows };
+    }
+    
+    return { hasNew: false, newData: [] };
+  } catch (error) {
+    console.error(`Error checking ${tableName}:`, error.message);
+    return { hasNew: false, newData: [] };
+  }
+}
+
+
+// ============================================
+// Connection Status Notification
+// ============================================
+function notifyConnectionStatus(connected) {
+  const BrowserWindow = require('electron').BrowserWindow;
+  const allWindows = BrowserWindow.getAllWindows();
+  
+  console.log(`📡 Broadcasting connection status: ${connected ? 'ONLINE ✅' : 'OFFLINE ⚠️'}`);
+  
+  const statusData = {
+    connected: connected,
+    timestamp: new Date().toISOString(),
+    host: dbConfig.host,
+    port: dbConfig.port,
+    database: dbConfig.database
+  };
+  
+  allWindows.forEach(window => {
+    if (window && window.webContents) {
+      window.webContents.send('db-connection-status', statusData);
+    }
+  });
+}
+
+// ============================================
+// IPC Handler - Get Connection Status
+// ============================================
+ipcMain.handle('get-db-status', async () => {
+  return {
+    connected: dbConnected,
+    host: dbConfig.host,
+    port: dbConfig.port,
+    database: dbConfig.database,
+    timestamp: new Date().toISOString()
+  };
+});
+
+// ============================================
+// NEW: IPC Handler - Immediate Sync After Save
+// ============================================
+ipcMain.handle('trigger-immediate-sync', async (event, { table, action }) => {
+  console.log(`🚀 Immediate sync triggered: ${table} - ${action}`);
+  
+  // Force immediate check for updates
+  await checkForUpdates();
+  
+  return { success: true };
+});
+
+// ============================================
+// IPC Handler - Sync Patients (ENHANCED)
+// ============================================
+ipcMain.handle('sync-patients', async (event, patients) => {
+  console.log('\n========================================');
+  console.log('🔄 PATIENT SYNC REQUEST');
+  console.log('========================================');
+  console.log('Patients to sync:', patients.length);
+  console.log('========================================\n');
+  
+  if (!dbConnected) {
+    return { 
+      success: false, 
+      message: 'Server not available',
+      synced: 0,
+      total: patients.length 
+    };
+  }
+  
+  let syncedCount = 0;
+  let failedCount = 0;
+  const errors = [];
+  
+  try {
+    for (const patient of patients) {
+      try {
+        await dbPool.query(
+          `INSERT INTO patients (id, name, contact, gender, age, doctor_id, notes, bp, weight, amount, 
+           temperature, date_added, rx, visit_data, is_free) 
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON DUPLICATE KEY UPDATE 
+           name = VALUES(name), 
+           contact = VALUES(contact), 
+           notes = VALUES(notes), 
+           rx = VALUES(rx), 
+           visit_data = VALUES(visit_data)`,
+          [
+            patient.id,
+            patient.name,
+            patient.contact || null,
+            patient.gender || null,
+            patient.age || null,
+            patient.doctorId || null,
+            patient.notes || null,
+            patient.bp || null,
+            patient.weight || null,
+            patient.amount || null,
+            patient.temperature || null,
+            patient.dateAdded || new Date().toISOString().split('T')[0],
+            patient.rx || null,
+            patient.visitData ? JSON.stringify(patient.visitData) : null,
+            patient.isFree || false
+          ]
+        );
+        
+        syncedCount++;
+      } catch (err) {
+        failedCount++;
+        errors.push(`${patient.id}: ${err.message}`);
+      }
+    }
+    
+    console.log(`✅ Synced: ${syncedCount}, ❌ Failed: ${failedCount}\n`);
+    
+    // Trigger immediate update check
+    setTimeout(() => checkForUpdates(), 500);
+    
+    return { 
+      success: true, 
+      synced: syncedCount, 
+      failed: failedCount,
+      total: patients.length
+    };
+    
+  } catch (error) {
+    console.error('❌ Batch sync error:', error);
+    return { 
+      success: false, 
+      message: error.message, 
+      synced: syncedCount,
+      total: patients.length
+    };
+  }
+});
+
+
+// ============================================
+// IPC Handler - Get Users (ENHANCED)
+// ============================================
+ipcMain.handle('get-users', async () => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, message: 'Database not connected' };
+    }
+    
+    const [rows] = await dbPool.query(
+      'SELECT id, username, password, full_name, role, status, created_at, last_login FROM users ORDER BY created_at DESC'
+    );
+    
+    console.log(`📤 Sending ${rows.length} users to client`);
+    return { success: true, users: rows };
+  } catch (error) {
+    console.error('Get users error:', error);
+    return { success: false, message: error.message };
+  }
+});
+
+// ============================================
+// IPC Handler - Create User (ENHANCED)
+// ============================================
+ipcMain.handle('create-user', async (event, userData) => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, message: 'Database not connected' };
+    }
+    
+    const [result] = await dbPool.query(
+      'INSERT INTO users (username, password, full_name, role, status, created_by) VALUES (?, ?, ?, ?, ?, ?)',
+      [userData.username, userData.password, userData.fullName, userData.role, 'active', userData.createdBy]
+    );
+    
+    console.log(`✅ Created user: ${userData.username}`);
+    
+    // Trigger immediate update
+    setTimeout(() => checkForUpdates(), 500);
+    
+    return { success: true, userId: result.insertId };
+  } catch (error) {
+    if (error.code === 'ER_DUP_ENTRY') {
+      return { success: false, message: 'Username already exists' };
+    }
+    return { success: false, message: error.message };
+  }
+});
+
+
+
+ipcMain.handle('get-all-patients', async () => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, message: 'Database not connected', patients: [] };
+    }
+    
+    console.log('📤 Fetching all patients from server...');
+    
+    const [rows] = await dbPool.query(`
+      SELECT 
+        p.*,
+        d.name as doctor_name
+      FROM patients p
+      LEFT JOIN doctors d ON p.doctor_id = d.id
+      ORDER BY p.created_at DESC
+      LIMIT 1000
+    `);
+    
+    console.log(`✅ Found ${rows.length} patients on server`);
+    
+    return { 
+      success: true, 
+      patients: rows,
+      count: rows.length
+    };
+    
+  } catch (error) {
+    console.error('❌ Error fetching patients:', error);
+    return { 
+      success: false, 
+      message: error.message,
+      patients: []
+    };
+  }
+});
+// ============================================
+// IPC Handler - Add Single Patient to Server
+// ============================================
+// ============================================
+// IPC Handler - Add Single Patient to Server (FIXED)
+// Replace your existing handler with this version
+// ============================================
+ipcMain.handle('add-patient-to-server', async (event, patientData) => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, message: 'Database not connected' };
+    }
+    
+    console.log('📥 Adding patient to server:', patientData.id);
+    
+    // Find doctor ID by name
+    let doctorId = null;
+    if (patientData.doctor) {
+      const [doctorRows] = await dbPool.query(
+        'SELECT id FROM doctors WHERE name = ? LIMIT 1',
+        [patientData.doctor]
+      );
+      
+      if (doctorRows.length > 0) {
+        doctorId = doctorRows[0].id;
+      }
+    }
+    
+    // ✅ FIXED: Handle empty strings and convert to proper types
+    const processValue = (value, type = 'string') => {
+      if (value === '' || value === undefined) return null;
+      if (type === 'number') {
+        const num = parseFloat(value);
+        return isNaN(num) ? null : num;
+      }
+      return value;
+    };
+    
+    // Insert or update patient with proper null handling
+    await dbPool.query(
+      `INSERT INTO patients 
+        (id, name, contact, gender, age, doctor_id, notes, bp, weight, amount, 
+         temperature, date_added, rx, visit_data, is_free) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE 
+         name = VALUES(name),
+         contact = VALUES(contact),
+         gender = VALUES(gender),
+         age = VALUES(age),
+         doctor_id = VALUES(doctor_id),
+         notes = VALUES(notes),
+         bp = VALUES(bp),
+         weight = VALUES(weight),
+         amount = VALUES(amount),
+         temperature = VALUES(temperature),
+         rx = VALUES(rx),
+         visit_data = VALUES(visit_data),
+         is_free = VALUES(is_free)`,
+      [
+        patientData.id,
+        patientData.name,
+        processValue(patientData.contact),
+        processValue(patientData.gender),
+        processValue(patientData.age),
+        doctorId,
+        processValue(patientData.notes),
+        processValue(patientData.bp),
+        processValue(patientData.weight, 'number'),
+        processValue(patientData.amount),
+        processValue(patientData.temperature),
+        patientData.dateAdded || new Date().toISOString().split('T')[0],
+        processValue(patientData.rx),
+        patientData.visitData ? JSON.stringify(patientData.visitData) : null,
+        patientData.isFree ? 1 : 0
+      ]
+    );
+    
+    console.log('✅ Patient added to server successfully:', patientData.id);
+    
+    // Trigger immediate update check
+    setTimeout(() => checkForUpdates(), 500);
+    
+    return { 
+      success: true, 
+      patientId: patientData.id,
+      message: 'Patient saved to server'
+    };
+    
+  } catch (error) {
+    console.error('❌ Error adding patient to server:', error);
+    
+    // Check if it's a duplicate key error (patient already exists)
+    if (error.code === 'ER_DUP_ENTRY') {
+      console.log('ℹ️ Patient already exists on server');
+      return { 
+        success: true, 
+        message: 'Patient already exists',
+        patientId: patientData.id
+      };
+    }
+    
+    return { 
+      success: false, 
+      message: error.message 
+    };
+  }
+});
+// ============================================
+// IPC Handler - Get Patients Count
+// ============================================
+ipcMain.handle('get-patients-count', async () => {
+  try {
+    if (!dbConnected || !dbPool) {
+      return { success: false, count: 0 };
+    }
+    
+    const [rows] = await dbPool.query('SELECT COUNT(*) as count FROM patients');
+    
+    return { 
+      success: true, 
+      count: rows[0].count 
+    };
+    
+  } catch (error) {
+    console.error('Error getting patient count:', error);
+    return { 
+      success: false, 
+      count: 0 
+    };
+  }
+});
 // ============================================
 // Create Main Window
 // ============================================
@@ -85,8 +614,7 @@ function createWindow() {
     minHeight: 700,
     webPreferences: {
       nodeIntegration: true,
-      contextIsolation: false,
-      enableRemoteModule: true // Add this for @electron/remote
+      contextIsolation: false
     },
     icon: path.join(__dirname, 'logo.png'),
     show: false,
@@ -98,31 +626,12 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     
-    // Create update progress UI
-    mainWindow.webContents.executeJavaScript(`
-      // Create update banner
-      const updateBanner = document.createElement('div');
-      updateBanner.id = 'update-banner';
-      updateBanner.style.cssText = 'display: none; position: fixed; top: 0; left: 0; right: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 20px; text-align: center; z-index: 9999; font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,0.3);';
-      document.body.appendChild(updateBanner);
-      
-      // Create progress bar container
-      const progressContainer = document.createElement('div');
-      progressContainer.id = 'update-progress-container';
-      progressContainer.style.cssText = 'display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); z-index: 10000; min-width: 400px;';
-      progressContainer.innerHTML = \`
-        <h2 style="margin: 0 0 20px 0; color: #667eea; font-size: 24px;">Downloading Update</h2>
-        <div id="progress-bar-bg" style="width: 100%; height: 30px; background: #e0e0e0; border-radius: 15px; overflow: hidden; margin-bottom: 15px;">
-          <div id="progress-bar-fill" style="width: 0%; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); transition: width 0.3s;"></div>
-        </div>
-        <div id="progress-text" style="text-align: center; font-size: 16px; color: #666; margin-bottom: 10px;">0%</div>
-        <div id="progress-details" style="text-align: center; font-size: 14px; color: #999;">Preparing download...</div>
-      \`;
-      document.body.appendChild(progressContainer);
-    `);
+    // Send initial connection status
+    setTimeout(() => {
+      notifyConnectionStatus(dbConnected);
+    }, 500);
   });
   
-  // Open DevTools in development
   if (process.env.NODE_ENV === 'development') {
     mainWindow.webContents.openDevTools();
   }
@@ -133,628 +642,35 @@ function createWindow() {
 }
 
 // ============================================
-// Auto-Update Event Handlers - FIXED VERSION
-// ============================================
-
-autoUpdater.on('checking-for-update', () => {
-  log.info('🔍 Checking for updates...');
-  sendStatusToWindow('🔍 Checking for updates...');
-  
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('update-checking');
-  }
-});
-
-autoUpdater.on('update-available', (info) => {
-  log.info('🎉 Update available:', info.version);
-  sendStatusToWindow(`🎉 New version ${info.version} is available!`);
-  
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('update-available', info);
-  }
-  
-  // Ask user if they want to download
-  dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'Update Available',
-    message: `A new version ${info.version} is available!`,
-    detail: 'Would you like to download and install it now?',
-    buttons: ['Download Now', 'Later']
-  }).then((result) => {
-    if (result.response === 0) { // Download Now clicked
-      log.info('User chose to download update');
-      sendStatusToWindow('📥 Starting download...');
-      
-      // Show progress UI
-      if (mainWindow && mainWindow.webContents) {
-        mainWindow.webContents.executeJavaScript(`
-          document.getElementById('update-progress-container').style.display = 'block';
-        `);
-      }
-      
-      // Start download
-      autoUpdater.downloadUpdate();
-    } else {
-      log.info('User chose to download later');
-      sendStatusToWindow('Update postponed. Will be available on next restart.');
-      setTimeout(() => {
-        sendStatusToWindow('');
-      }, 5000);
-    }
-  });
-});
-
-autoUpdater.on('update-not-available', (info) => {
-  log.info('✅ Update not available. Current version:', info.version);
-  sendStatusToWindow('✅ You are running the latest version!');
-  
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('update-not-available', info);
-  }
-  
-  // Auto-hide after 5 seconds
-  setTimeout(() => {
-    sendStatusToWindow('');
-  }, 5000);
-});
-
-autoUpdater.on('error', (err) => {
-  log.error('❌ Error in auto-updater:', err);
-  sendStatusToWindow('❌ Update check failed');
-  
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('update-error', err.message);
-    
-    // Hide progress UI
-    mainWindow.webContents.executeJavaScript(`
-      document.getElementById('update-progress-container').style.display = 'none';
-    `);
-  }
-  
-  // Show error dialog
-  dialog.showErrorBox(
-    'Update Error',
-    `Failed to check for updates.\n\nError: ${err.message}\n\nPlease check your internet connection and try again later.`
-  );
-  
-  setTimeout(() => {
-    sendStatusToWindow('');
-  }, 5000);
-});
-
-autoUpdater.on('download-progress', (progressObj) => {
-  const percent = Math.round(progressObj.percent);
-  const downloadedMB = (progressObj.transferred / 1024 / 1024).toFixed(2);
-  const totalMB = (progressObj.total / 1024 / 1024).toFixed(2);
-  const speedKB = Math.round(progressObj.bytesPerSecond / 1024);
-  
-  const log_message = `Download speed: ${speedKB} KB/s - Downloaded ${percent}% (${downloadedMB}MB / ${totalMB}MB)`;
-  
-  log.info(log_message);
-  sendStatusToWindow(`📥 Downloading: ${percent}%`);
-  
-  // Update progress UI
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('download-progress', {
-      percent: progressObj.percent,
-      transferred: progressObj.transferred,
-      total: progressObj.total,
-      bytesPerSecond: progressObj.bytesPerSecond
-    });
-    
-    // Update visual progress bar
-    mainWindow.webContents.executeJavaScript(`
-      const progressFill = document.getElementById('progress-bar-fill');
-      const progressText = document.getElementById('progress-text');
-      const progressDetails = document.getElementById('progress-details');
-      
-      if (progressFill && progressText && progressDetails) {
-        progressFill.style.width = '${percent}%';
-        progressText.textContent = '${percent}%';
-        progressDetails.textContent = '${downloadedMB}MB / ${totalMB}MB - ${speedKB} KB/s';
-      }
-    `);
-  }
-});
-
-autoUpdater.on('update-downloaded', (info) => {
-  log.info('✅ Update downloaded successfully. Version:', info.version);
-  sendStatusToWindow('✅ Update downloaded!');
-  
-  if (mainWindow && mainWindow.webContents) {
-    mainWindow.webContents.send('update-downloaded', info);
-    
-    // Hide progress UI
-    mainWindow.webContents.executeJavaScript(`
-      document.getElementById('update-progress-container').style.display = 'none';
-    `);
-  }
-  
-  // Show restart dialog
-  dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'Update Ready',
-    message: 'Update Downloaded Successfully!',
-    detail: `Version ${info.version} has been downloaded and is ready to install.\n\nThe application will restart to apply the update.`,
-    buttons: ['Restart Now', 'Restart Later']
-  }).then((result) => {
-    if (result.response === 0) { // Restart Now clicked
-      log.info('User chose to restart now');
-      setImmediate(() => autoUpdater.quitAndInstall());
-    } else {
-      log.info('User chose to restart later');
-      sendStatusToWindow('Update will be installed on next restart');
-      
-      // Auto-install on next app quit
-      autoUpdater.autoInstallOnAppQuit = true;
-      
-      setTimeout(() => {
-        sendStatusToWindow('');
-      }, 5000);
-    }
-  });
-});
-
-// ============================================
-// Send Update Status to Window
-// ============================================
-function sendStatusToWindow(text) {
-  if (mainWindow && mainWindow.webContents) {
-    log.info('Status:', text);
-    mainWindow.webContents.executeJavaScript(`
-      const banner = document.getElementById('update-banner');
-      if (banner) {
-        if ('${text}') {
-          banner.textContent = '${text.replace(/'/g, "\\'")}';
-          banner.style.display = 'block';
-          
-          // Auto-hide success messages after 5 seconds
-          if ('${text}'.includes('✅') || '${text}'.includes('latest version')) {
-            setTimeout(() => {
-              banner.style.display = 'none';
-            }, 5000);
-          }
-        } else {
-          banner.style.display = 'none';
-        }
-      }
-    `);
-  }
-}
-
-// ============================================
-// App Lifecycle - FIXED
+// App Lifecycle
 // ============================================
 app.whenReady().then(async () => {
-  const connected = await initDatabase();
+  console.log('\n🚀 Application Starting...\n');
   
-  if (!connected) {
-    app.quit();
-    return;
-  }
-  
+  await initDatabase();
   createWindow();
-
-  // IMPORTANT: Check for updates after window is fully loaded and user can see the app
-  // Wait 3 seconds to let the window fully render
+  
+  // Auto-updater
   setTimeout(() => {
-    log.info('🔄 Starting automatic update check...');
-    
-    // Check for updates (will ask user before downloading)
+    log.info('🔄 Checking for updates...');
     autoUpdater.checkForUpdates().catch(err => {
-      log.error('Auto-update check failed:', err);
+      log.error('Update check failed:', err);
     });
   }, 3000);
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
 });
 
 app.on('before-quit', async () => {
+  console.log('🛑 Application shutting down...');
+  
+  if (syncInterval) clearInterval(syncInterval);
+  if (reconnectInterval) clearInterval(reconnectInterval);
+  if (connectionCheckInterval) clearInterval(connectionCheckInterval);
+  if (pollingInterval) clearInterval(pollingInterval); // NEW
+  
   if (dbPool) {
     await dbPool.end();
-    console.log('Database connection closed');
+    console.log('🔌 Database connection closed');
   }
 });
 
-// ============================================
-// IPC Handler - Manual Update Check - FIXED
-// ============================================
-ipcMain.handle('check-for-updates', async () => {
-  log.info('📱 Manual update check requested from UI');
-  try {
-    const result = await autoUpdater.checkForUpdates();
-    log.info('Manual check result:', result);
-    return { success: true };
-  } catch (error) {
-    log.error('Manual update check failed:', error);
-    return { success: false, error: error.message };
-  }
-});
-
-// ============================================
-// IPC Handlers - Authentication
-// ============================================
-
-ipcMain.handle('login', async (event, { username, password, role }) => {
-  try {
-    const [rows] = await dbPool.query(
-      'SELECT id, username, password, full_name, role, status FROM users WHERE username = ? AND role = ?',
-      [username, role]
-    );
-
-    if (rows.length === 0) {
-      return { success: false, message: 'Invalid username or role' };
-    }
-
-    const user = rows[0];
-    
-    if (user.status !== 'active') {
-      return { success: false, message: 'Account is inactive. Contact administrator.' };
-    }
-
-    // Simple password check (in production, use bcrypt.compare)
-    if (user.password !== password) {
-      return { success: false, message: 'Invalid password' };
-    }
-
-    // Create session
-    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-    
-    await dbPool.query(
-      'INSERT INTO sessions (session_id, user_id) VALUES (?, ?)',
-      [sessionId, user.id]
-    );
-
-    // Update last login
-    await dbPool.query(
-      'UPDATE users SET last_login = NOW() WHERE id = ?',
-      [user.id]
-    );
-
-    return {
-      success: true,
-      user: {
-        userId: user.id,
-        username: user.username,
-        fullName: user.full_name,
-        role: user.role,
-        sessionId
-      }
-    };
-  } catch (error) {
-    console.error('Login error:', error);
-    return { success: false, message: 'Database error: ' + error.message };
-  }
-});
-
-ipcMain.handle('logout', async (event, sessionId) => {
-  try {
-    await dbPool.query('DELETE FROM sessions WHERE session_id = ?', [sessionId]);
-    return { success: true };
-  } catch (error) {
-    console.error('Logout error:', error);
-    return { success: false };
-  }
-});
-
-// ============================================
-// IPC Handlers - User Management
-// ============================================
-
-ipcMain.handle('get-users', async () => {
-  try {
-    const [rows] = await dbPool.query(
-      'SELECT id, username, full_name, role, status, created_at, last_login FROM users ORDER BY created_at DESC'
-    );
-    return { success: true, users: rows };
-  } catch (error) {
-    console.error('Get users error:', error);
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('create-user', async (event, userData) => {
-  try {
-    const [result] = await dbPool.query(
-      'INSERT INTO users (username, password, full_name, role, status, created_by) VALUES (?, ?, ?, ?, ?, ?)',
-      [userData.username, userData.password, userData.fullName, userData.role, 'active', userData.createdBy]
-    );
-    
-    return { success: true, userId: result.insertId };
-  } catch (error) {
-    if (error.code === 'ER_DUP_ENTRY') {
-      return { success: false, message: 'Username already exists' };
-    }
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('update-user-status', async (event, { userId, status }) => {
-  try {
-    await dbPool.query('UPDATE users SET status = ? WHERE id = ?', [status, userId]);
-    return { success: true };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('delete-user', async (event, userId) => {
-  try {
-    await dbPool.query('DELETE FROM users WHERE id = ?', [userId]);
-    return { success: true };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-// ============================================
-// IPC Handlers - Doctors
-// ============================================
-
-ipcMain.handle('get-doctors', async () => {
-  try {
-    const [rows] = await dbPool.query(
-      'SELECT id, name, department, visit_section FROM doctors ORDER BY name'
-    );
-    return { success: true, doctors: rows };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('add-doctor', async (event, doctor) => {
-  try {
-    const [result] = await dbPool.query(
-      'INSERT INTO doctors (name, department, visit_section) VALUES (?, ?, ?)',
-      [doctor.name, doctor.department, doctor.visitSection || false]
-    );
-    return { success: true, doctorId: result.insertId };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('update-doctor', async (event, doctor) => {
-  try {
-    await dbPool.query(
-      'UPDATE doctors SET name = ?, department = ?, visit_section = ? WHERE id = ?',
-      [doctor.name, doctor.department, doctor.visitSection, doctor.id]
-    );
-    return { success: true };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('delete-doctor', async (event, doctorId) => {
-  try {
-    await dbPool.query('DELETE FROM doctors WHERE id = ?', [doctorId]);
-    return { success: true };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-// ============================================
-// IPC Handlers - Patients
-// ============================================
-
-ipcMain.handle('get-patients', async () => {
-  try {
-    const [rows] = await dbPool.query(`
-      SELECT p.*, d.name as doctor_name, d.department
-      FROM patients p
-      LEFT JOIN doctors d ON p.doctor_id = d.id
-      ORDER BY p.created_at DESC
-    `);
-    return { success: true, patients: rows };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('add-patient', async (event, patient) => {
-  try {
-    await dbPool.query(
-      `INSERT INTO patients (id, name, contact, gender, age, doctor_id, notes, bp, weight, amount, 
-       temperature, date_added, rx, visit_data, is_free) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        patient.id, patient.name, patient.contact, patient.gender, patient.age,
-        patient.doctorId, patient.notes, patient.bp, patient.weight, patient.amount,
-        patient.temperature, patient.dateAdded, patient.rx,
-        JSON.stringify(patient.visitData), patient.isFree || false
-      ]
-    );
-    
-    // Increment doctor count
-    if (patient.doctorId) {
-      await dbPool.query(
-        `INSERT INTO doctor_counts (doctor_id, count_date, patient_count) 
-         VALUES (?, ?, 1) 
-         ON DUPLICATE KEY UPDATE patient_count = patient_count + 1`,
-        [patient.doctorId, patient.dateAdded]
-      );
-    }
-    
-    return { success: true };
-  } catch (error) {
-    console.error('Add patient error:', error);
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('update-patient', async (event, patient) => {
-  try {
-    await dbPool.query(
-      `UPDATE patients SET name = ?, contact = ?, notes = ?, rx = ?, visit_data = ? WHERE id = ?`,
-      [patient.name, patient.contact, patient.notes, patient.rx, JSON.stringify(patient.visitData), patient.id]
-    );
-    return { success: true };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-// ============================================
-// IPC Handlers - Medicines
-// ============================================
-
-ipcMain.handle('get-medicines', async () => {
-  try {
-    const [rows] = await dbPool.query('SELECT * FROM medicines ORDER BY name');
-    return { success: true, medicines: rows };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('add-medicine', async (event, medicine) => {
-  try {
-    const [result] = await dbPool.query(
-      `INSERT INTO medicines (name, barcode, boxes, tablets_per_box, total_tablets, 
-       price_per_tablet, price_per_box, expiry) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        medicine.name, medicine.barcode, medicine.boxes, medicine.tablets_per_box,
-        medicine.totalTablets, medicine.price_per_tablet, medicine.price_per_box, medicine.expiry
-      ]
-    );
-    return { success: true, medicineId: result.insertId };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('update-medicine', async (event, medicine) => {
-  try {
-    await dbPool.query(
-      `UPDATE medicines SET name = ?, barcode = ?, boxes = ?, tablets_per_box = ?, 
-       total_tablets = ?, price_per_tablet = ?, price_per_box = ?, expiry = ? 
-       WHERE id = ?`,
-      [
-        medicine.name, medicine.barcode, medicine.boxes, medicine.tablets_per_box,
-        medicine.totalTablets, medicine.price_per_tablet, medicine.price_per_box,
-        medicine.expiry, medicine.id
-      ]
-    );
-    return { success: true };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('delete-medicine', async (event, medicineId) => {
-  try {
-    await dbPool.query('DELETE FROM medicines WHERE id = ?', [medicineId]);
-    return { success: true };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-// ============================================
-// IPC Handlers - Transactions
-// ============================================
-
-ipcMain.handle('add-transaction', async (event, transaction) => {
-  try {
-    const [result] = await dbPool.query(
-      'INSERT INTO transactions (items, total) VALUES (?, ?)',
-      [JSON.stringify(transaction.items), transaction.total]
-    );
-    return { success: true, transactionId: result.insertId };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('get-transactions', async () => {
-  try {
-    const [rows] = await dbPool.query(
-      'SELECT * FROM transactions ORDER BY transaction_date DESC'
-    );
-    
-    // Parse JSON items
-    const transactions = rows.map(row => ({
-      ...row,
-      items: JSON.parse(row.items)
-    }));
-    
-    return { success: true, transactions };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-// ============================================
-// IPC Handlers - Lab Tests
-// ============================================
-
-ipcMain.handle('get-lab-tests-master', async () => {
-  try {
-    const [rows] = await dbPool.query('SELECT * FROM lab_tests_master ORDER BY name');
-    return { success: true, tests: rows };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('add-lab-test-record', async (event, labTest) => {
-  try {
-    await dbPool.query(
-      `INSERT INTO lab_test_records (id, patient_name, age, gender, clinic, phone, 
-       contact, prize, referred_by, doctor_name, test_name, date_added) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        labTest.id, labTest.name, labTest.age, labTest.gender, labTest.clinic,
-        labTest.phone, labTest.contact, labTest.prize, labTest.referredBy,
-        labTest.drName, labTest.testName, labTest.dateAdded
-      ]
-    );
-    return { success: true };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-ipcMain.handle('get-lab-test-records', async () => {
-  try {
-    const [rows] = await dbPool.query(
-      'SELECT * FROM lab_test_records ORDER BY created_at DESC'
-    );
-    return { success: true, labTests: rows };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-// ============================================
-// IPC Handlers - Doctor Counts
-// ============================================
-
-ipcMain.handle('get-doctor-count', async (event, { doctorId, date }) => {
-  try {
-    const [rows] = await dbPool.query(
-      'SELECT patient_count FROM doctor_counts WHERE doctor_id = ? AND count_date = ?',
-      [doctorId, date]
-    );
-    
-    const count = rows.length > 0 ? rows[0].patient_count : 0;
-    return { success: true, count };
-  } catch (error) {
-    return { success: false, message: error.message };
-  }
-});
-
-console.log('✅ Main process initialized with MySQL and Auto-Update');
+console.log('✅ Real-time sync system initialized');

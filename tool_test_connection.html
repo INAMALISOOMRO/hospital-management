@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Diagnostic Tool</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Courier New', monospace;
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #252526;
+      border-radius: 10px;
+      padding: 30px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+
+    h1 {
+      color: #569cd6;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .section {
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border-left: 4px solid #569cd6;
+    }
+
+    .section h2 {
+      color: #4ec9b0;
+      margin-bottom: 15px;
+      font-size: 18px;
+    }
+
+    .config-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px;
+      background: #2d2d30;
+      margin-bottom: 8px;
+      border-radius: 4px;
+    }
+
+    .config-label {
+      color: #9cdcfe;
+      font-weight: bold;
+    }
+
+    .config-value {
+      color: #ce9178;
+      font-family: monospace;
+    }
+
+    .btn {
+      background: linear-gradient(135deg, #569cd6 0%, #4ec9b0 100%);
+      color: white;
+      border: none;
+      padding: 15px 30px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+      width: 100%;
+      margin-bottom: 20px;
+      transition: all 0.3s;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px rgba(86, 156, 214, 0.4);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .log {
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 8px;
+      min-height: 300px;
+      max-height: 500px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      border: 1px solid #3e3e42;
+    }
+
+    .log-line {
+      margin-bottom: 5px;
+    }
+
+    .log-success {
+      color: #4ec9b0;
+    }
+
+    .log-error {
+      color: #f48771;
+    }
+
+    .log-warning {
+      color: #dcdcaa;
+    }
+
+    .log-info {
+      color: #9cdcfe;
+    }
+
+    .status-badge {
+      display: inline-block;
+      padding: 5px 15px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+      margin-left: 10px;
+    }
+
+    .status-online {
+      background: #4ec9b0;
+      color: #000;
+    }
+
+    .status-offline {
+      background: #f48771;
+      color: #fff;
+    }
+
+    .help-box {
+      background: #2d2d30;
+      padding: 15px;
+      border-radius: 8px;
+      border-left: 4px solid #dcdcaa;
+      margin-top: 20px;
+    }
+
+    .help-box h3 {
+      color: #dcdcaa;
+      margin-bottom: 10px;
+    }
+
+    .help-box ul {
+      margin-left: 20px;
+    }
+
+    .help-box li {
+      margin-bottom: 8px;
+      color: #d4d4d4;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔍 Network Diagnostic Tool</h1>
+
+    <div class="section">
+      <h2>Current Configuration</h2>
+      <div class="config-item">
+        <span class="config-label">Host:</span>
+        <span class="config-value" id="configHost">Loading...</span>
+      </div>
+      <div class="config-item">
+        <span class="config-label">Port:</span>
+        <span class="config-value" id="configPort">Loading...</span>
+      </div>
+      <div class="config-item">
+        <span class="config-label">Database:</span>
+        <span class="config-value" id="configDatabase">Loading...</span>
+      </div>
+      <div class="config-item">
+        <span class="config-label">Status:</span>
+        <span id="connectionStatus">
+          <span class="status-badge status-offline">OFFLINE</span>
+        </span>
+      </div>
+    </div>
+
+    <button class="btn" id="testBtn" onclick="runDiagnostic()">
+      🧪 Run Full Diagnostic
+    </button>
+
+    <div class="section">
+      <h2>Diagnostic Log</h2>
+      <div class="log" id="logOutput">Waiting for diagnostic test...</div>
+    </div>
+
+    <div class="help-box">
+      <h3>💡 Troubleshooting Guide</h3>
+      <ul>
+        <li><strong>ECONNREFUSED:</strong> MySQL not running or firewall blocking port 3306</li>
+        <li><strong>ETIMEDOUT:</strong> Network unreachable - check if both PCs are on same WiFi</li>
+        <li><strong>ER_ACCESS_DENIED:</strong> Wrong username/password in .env file</li>
+        <li><strong>EHOSTUNREACH:</strong> Wrong IP address or computer offline</li>
+      </ul>
+    </div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    let logLines = [];
+
+    function addLog(message, type = 'info') {
+      const timestamp = new Date().toLocaleTimeString();
+      const line = `[${timestamp}] ${message}`;
+      logLines.push({ line, type });
+      
+      const logOutput = document.getElementById('logOutput');
+      logOutput.innerHTML = logLines.map(l => 
+        `<div class="log-line log-${l.type}">${l.line}</div>`
+      ).join('');
+      
+      logOutput.scrollTop = logOutput.scrollHeight;
+    }
+
+    async function runDiagnostic() {
+      const testBtn = document.getElementById('testBtn');
+      testBtn.disabled = true;
+      testBtn.textContent = '⏳ Running diagnostic...';
+      
+      logLines = [];
+      addLog('========================================', 'info');
+      addLog('🚀 STARTING DIAGNOSTIC TEST', 'info');
+      addLog('========================================', 'info');
+      
+      try {
+        // Test 1: Get current status
+        addLog('\n📊 Test 1: Checking current connection status...', 'info');
+        const status = await ipcRenderer.invoke('get-db-status');
+        
+        addLog(`   Host: ${status.host}`, 'info');
+        addLog(`   Port: ${status.port}`, 'info');
+        addLog(`   Database: ${status.database}`, 'info');
+        addLog(`   Connected: ${status.connected ? '✅ YES' : '❌ NO'}`, status.connected ? 'success' : 'error');
+        
+        // Test 2: Run connection test
+        addLog('\n🧪 Test 2: Running full connection test...', 'info');
+        const result = await ipcRenderer.invoke('test-connection');
+        
+        if (result.success) {
+          addLog('   ✅ CONNECTION SUCCESSFUL!', 'success');
+          addLog(`   ${result.message}`, 'success');
+          
+          if (result.details) {
+            addLog(`   Users in database: ${result.details.userCount}`, 'success');
+          }
+          
+          document.getElementById('connectionStatus').innerHTML = 
+            '<span class="status-badge status-online">ONLINE</span>';
+          
+        } else {
+          addLog('   ❌ CONNECTION FAILED', 'error');
+          addLog(`   ${result.message}`, 'error');
+          
+          if (result.errorCode) {
+            addLog(`   Error Code: ${result.errorCode}`, 'error');
+          }
+          
+          document.getElementById('connectionStatus').innerHTML = 
+            '<span class="status-badge status-offline">OFFLINE</span>';
+        }
+        
+      } catch (error) {
+        addLog('   ❌ DIAGNOSTIC ERROR', 'error');
+        addLog(`   ${error.message}`, 'error');
+      }
+      
+      addLog('\n========================================', 'info');
+      addLog('✅ DIAGNOSTIC COMPLETE', 'info');
+      addLog('========================================', 'info');
+      
+      testBtn.disabled = false;
+      testBtn.textContent = '🔄 Run Diagnostic Again';
+    }
+
+    // Load initial config
+    window.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const status = await ipcRenderer.invoke('get-db-status');
+        
+        document.getElementById('configHost').textContent = status.host;
+        document.getElementById('configPort').textContent = status.port;
+        document.getElementById('configDatabase').textContent = status.database;
+        
+        if (status.connected) {
+          document.getElementById('connectionStatus').innerHTML = 
+            '<span class="status-badge status-online">ONLINE</span>';
+        }
+        
+        addLog('🔍 Diagnostic tool ready. Click "Run Full Diagnostic" to test connection.', 'info');
+        
+      } catch (error) {
+        addLog('❌ Failed to load configuration: ' + error.message, 'error');
+      }
+    });
+
+    // Listen for connection status updates
+    ipcRenderer.on('db-connection-status', (event, data) => {
+      if (data.connected) {
+        document.getElementById('connectionStatus').innerHTML = 
+          '<span class="status-badge status-online">ONLINE</span>';
+        addLog('📡 Connection status changed: ONLINE', 'success');
+      } else {
+        document.getElementById('connectionStatus').innerHTML = 
+          '<span class="status-badge status-offline">OFFLINE</span>';
+        addLog('📡 Connection status changed: OFFLINE', 'warning');
+      }
+    });
+  </script>
+</body>
+</html>

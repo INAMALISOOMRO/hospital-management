@@ -335,9 +335,97 @@
         justify-content: space-between;
       }
     }
+
+
+    .connection-banner {
+  padding: 12px 40px;
+  text-align: center;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.3s;
+}
+
+.connection-banner.online {
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  color: white;
+}
+
+.connection-banner.offline {
+  background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%);
+  color: #000;
+}
+
+.connection-banner .status-text {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.connection-banner .pulse {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.connection-banner.online .pulse {
+  background: #fff;
+}
+
+.connection-banner.offline .pulse {
+  background: #dc3545;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.sync-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.sync-btn {
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 2px solid rgba(255, 255, 255, 0.5);
+  color: inherit;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s;
+  font-size: 13px;
+}
+
+.sync-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.sync-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
   </style>
 </head>
 <body>
+  <!-- Connection Status Banner -->
+  <div class="connection-banner offline" id="connectionBanner">
+    <div class="status-text">
+      <div class="pulse"></div>
+      <span id="statusText">🟡 Offline Mode - Data saved locally</span>
+    </div>
+    <div class="sync-controls">
+      <span id="lastSyncTime">Last sync: Never</span>
+      <button class="sync-btn" onclick="manualSync()" id="syncButton" disabled>
+        🔄 Sync Now
+      </button>
+    </div>
+  </div>
   <header>
     <div class="header-left">
       <img src="logo.png" alt="Hospital Logo" onerror="this.style.display='none'">
@@ -378,7 +466,7 @@
         <p style="margin: 5px 0; font-size: 14px;"><strong>Auto-Update:</strong> <span style="color: #2e7d32;">✅ Enabled</span></p>
       </div>
     </div>
-
+ 
     <!-- Statistics Cards -->
     <div class="dashboard-cards">
       <div class="card">
@@ -466,8 +554,38 @@
         </tbody>
       </table>
     </div>
-  </div>
+  <!-- Server Connection & Sync Status - MOVED INSIDE CONTAINER -->
+    <div class="section">
+      <div class="section-header">
+        <h2>📊 Server Connection & Sync Status</h2>
+      </div>
+      
+      <p style="color: #666; margin-bottom: 20px;">
+        Monitor database server connection and data synchronization
+      </p>
 
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 20px;">
+        <div style="padding: 15px; background: #f8f9fa; border-radius: 8px;">
+          <strong>Connection:</strong> <span id="connectionStatus">🟡 Checking...</span>
+        </div>
+        <div style="padding: 15px; background: #f8f9fa; border-radius: 8px;">
+          <strong>Server:</strong> <span id="serverInfo">localhost</span>
+        </div>
+        <div style="padding: 15px; background: #f8f9fa; border-radius: 8px;">
+          <strong>Last Sync:</strong> <span id="lastSync">Never</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 10px;">
+        <button class="btn btn-primary" onclick="checkServerConnection()">
+          🔍 Test Connection
+        </button>
+        <button class="btn btn-primary" onclick="manualSync()">
+          🔄 Sync Now
+        </button>
+      </div>
+    </div>
+  </div>
   <script>
     let authDB;
     let currentUser = null;
@@ -539,6 +657,535 @@
       }
     }
 
+
+// ============================================
+// REAL-TIME SYNC FOR PATIENTS PAGE - FIXED VERSION
+// ============================================
+
+let realtimePolling = null;
+let lastPatientSync = null;
+
+
+
+
+
+    // ============================================
+    // CONNECTION & SYNC FUNCTIONS - ADD THIS NEW CODE
+    // ============================================
+    // ============================================
+    // CONNECTION & SYNC FUNCTIONS - FIXED VERSION
+    // ============================================
+    let dbConnected = false;
+    let syncInProgress = false;
+
+    // Update connection status UI
+    function updateConnectionStatus(connected) {
+      dbConnected = connected;
+      
+      console.log(`🔄 UI Update - Connection: ${connected ? 'ONLINE ✅' : 'OFFLINE ⚠️'}`);
+      
+      const banner = document.getElementById('connectionBanner');
+      const statusText = document.getElementById('statusText');
+      const connectionStatus = document.getElementById('connectionStatus');
+      const syncButton = document.getElementById('syncButton');
+      const serverInfo = document.getElementById('serverInfo');
+      
+      if (connected) {
+        banner.className = 'connection-banner online';
+        statusText.textContent = '🟢 Server Connected - Auto-sync active';
+        connectionStatus.textContent = '🟢 Online';
+        connectionStatus.style.color = '#28a745';
+        syncButton.disabled = false;
+        
+        console.log('✅ Server connection established');
+      } else {
+        banner.className = 'connection-banner offline';
+        statusText.textContent = '🟡 Offline Mode - Data saved locally';
+        connectionStatus.textContent = '🟡 Offline';
+        connectionStatus.style.color = '#ffc107';
+        syncButton.disabled = true;
+        
+        console.log('⚠️ Working in offline mode');
+      }
+    }
+
+    // Listen for connection status updates from main process
+    if (typeof require !== 'undefined') {
+      const { ipcRenderer } = require('electron');
+      
+      console.log('📡 Setting up IPC listeners for connection status...');
+      
+      ipcRenderer.on('db-connection-status', (event, data) => {
+        console.log('📨 Received connection status update:', data);
+        updateConnectionStatus(data.connected);
+        
+        const serverInfo = document.getElementById('serverInfo');
+        if (serverInfo) {
+          serverInfo.textContent = `${data.host}/${data.database}`;
+        }
+      });
+      
+      // Listen for sync requests from main process
+      ipcRenderer.on('sync-request', async () => {
+        console.log('Background sync requested');
+        await manualSync();
+      });
+      
+      // ✅ NEW: Request initial connection status on page load
+      setTimeout(() => {
+        console.log('🔍 Requesting initial connection status...');
+        checkServerConnection();
+      }, 1000);
+    } else {
+      console.log('⚠️ Not running in Electron - connection features disabled');
+    }
+    // Check server connection
+    // Check server connection
+    // Check server connection
+    // Check server connection
+    async function checkServerConnection() {
+      if (typeof require === 'undefined') {
+        showAlert('error', 'This feature requires the desktop app');
+        return;
+      }
+      
+      try {
+        console.log('🔍 Checking server connection...');
+        const { ipcRenderer } = require('electron');
+        const status = await ipcRenderer.invoke('get-db-status');
+        
+        console.log('📊 Server status:', status);
+        
+        if (status.connected) {
+          showAlert('success', `✅ Server connection OK (${status.host}/${status.database})`);
+        } else {
+          showAlert('error', `⚠️ Server not connected (${status.host}/${status.database})`);
+        }
+        
+        updateConnectionStatus(status.connected);
+      } catch (error) {
+        console.error('Connection test error:', error);
+        showAlert('error', 'Connection test failed');
+      }
+    }
+
+    async function manualSync() {
+  if (syncInProgress) {
+    showAlert('error', 'Sync already in progress');
+    return;
+  }
+  
+  if (!dbConnected) {
+    showAlert('error', 'Server not connected - cannot sync');
+    return;
+  }
+  
+  if (typeof require === 'undefined') {
+    showAlert('error', 'Sync requires desktop app');
+    return;
+  }
+  
+  syncInProgress = true;
+  console.log('🔄 Starting manual user sync...');
+  
+  try {
+    const { ipcRenderer } = require('electron');
+    
+    // STEP 1: Push local users to server
+    console.log('📤 Step 1: Pushing local users to server...');
+    const db = await openAuthDB();
+    const transaction = db.transaction(['users'], 'readonly');
+    const userStore = transaction.objectStore('users');
+    const userRequest = userStore.getAll();
+    
+    userRequest.onsuccess = async function() {
+      const localUsers = userRequest.result || [];
+      console.log(`   Found ${localUsers.length} local users`);
+      
+      // Upload local users to server (skip admin as it already exists)
+      let uploadedCount = 0;
+      for (const user of localUsers) {
+        if (user.username === 'admin') continue; // Skip default admin
+        
+        try {
+          const result = await ipcRenderer.invoke('create-user', {
+            username: user.username,
+            password: user.password,
+            fullName: user.fullName,
+            role: user.role,
+            createdBy: user.createdBy || null
+          });
+          
+          if (result.success) {
+            uploadedCount++;
+            console.log(`   ✅ Uploaded: ${user.username}`);
+          } else if (result.message && result.message.includes('exists')) {
+            console.log(`   ℹ️ Already exists: ${user.username}`);
+          }
+        } catch (err) {
+          console.error(`   ❌ Upload error:`, err);
+        }
+      }
+      
+      // STEP 2: Pull users from server
+      console.log('📥 Step 2: Pulling users from server...');
+      const serverResult = await ipcRenderer.invoke('get-users');
+      
+      if (!serverResult.success) {
+        throw new Error('Failed to get users from server: ' + serverResult.message);
+      }
+      
+      console.log(`   Found ${serverResult.users.length} users on server`);
+      
+      // STEP 3: Merge server users into local database
+      const writeTransaction = db.transaction(['users'], 'readwrite');
+      const writeStore = writeTransaction.objectStore('users');
+      const index = writeStore.index('username');
+      
+      let added = 0;
+      let updated = 0;
+      let processed = 0;
+      
+      for (const serverUser of serverResult.users) {
+        const checkRequest = index.get(serverUser.username);
+        
+        await new Promise((resolve) => {
+          checkRequest.onsuccess = function() {
+            const localUser = checkRequest.result;
+            
+            const userData = {
+              username: serverUser.username,
+              password: serverUser.password,
+              fullName: serverUser.full_name,
+              role: serverUser.role,
+              status: serverUser.status,
+              createdAt: serverUser.created_at
+            };
+            
+            if (localUser) {
+              // Update existing
+              userData.id = localUser.id;
+              writeStore.put(userData);
+              updated++;
+              console.log(`   🔄 Updated: ${serverUser.username}`);
+            } else {
+              // Add new
+              writeStore.add(userData);
+              added++;
+              console.log(`   ➕ Added: ${serverUser.username}`);
+            }
+            
+            processed++;
+            if (processed === serverResult.users.length) {
+              resolve();
+            }
+          };
+          
+          checkRequest.onerror = function() {
+            console.error(`   ❌ Error checking: ${serverUser.username}`);
+            processed++;
+            if (processed === serverResult.users.length) {
+              resolve();
+            }
+          };
+        });
+      }
+      
+      // Wait for all writes to complete
+      writeTransaction.oncomplete = function() {
+        console.log('\n✅ SYNC COMPLETED!');
+        console.log(`   Uploaded: ${uploadedCount}`);
+        console.log(`   Downloaded: ${added} new, ${updated} updated`);
+        
+        showAlert('success', `✅ Sync complete! Added ${added}, Updated ${updated} users`);
+        
+        // Update last sync time
+        const lastSync = document.getElementById('lastSync');
+        const lastSyncTime = document.getElementById('lastSyncTime');
+        const now = new Date().toLocaleTimeString();
+        
+        if (lastSync) lastSync.textContent = now;
+        if (lastSyncTime) lastSyncTime.textContent = `Last sync: ${now}`;
+        
+        // Reload UI
+        loadUsers();
+        loadStatistics();
+        
+        syncInProgress = false;
+      };
+      
+      writeTransaction.onerror = function(e) {
+        console.error('❌ Write error:', e);
+        showAlert('error', 'Error saving synced users');
+        syncInProgress = false;
+      };
+    };
+    
+    userRequest.onerror = function() {
+      console.error('❌ Error reading local users');
+      showAlert('error', 'Error reading local data');
+      syncInProgress = false;
+    };
+    
+  } catch (error) {
+    console.error('❌ Sync error:', error);
+    showAlert('error', 'Sync error: ' + error.message);
+    syncInProgress = false;
+  }
+}
+
+// ============================================
+// REAL-TIME DATA LISTENER
+// Add this code to your admin.html <script> section
+// ============================================
+
+// Listen for real-time data updates
+if (typeof require !== 'undefined') {
+  const { ipcRenderer } = require('electron');
+  
+  console.log('🎧 Setting up real-time data listeners...');
+  
+  // Listen for data updates from server
+  ipcRenderer.on('data-updated', async (event, updateInfo) => {
+    console.log('📥 Real-time update received:', updateInfo.table);
+    
+    if (updateInfo.table === 'users') {
+      console.log('👥 New users detected, refreshing...');
+      
+      // Load fresh data from server
+      const result = await ipcRenderer.invoke('get-users');
+      
+      if (result.success && result.users) {
+        // Merge with IndexedDB
+        const db = await openAuthDB();
+        const transaction = db.transaction(['users'], 'readwrite');
+        const store = transaction.objectStore('users');
+        const index = store.index('username');
+        
+        for (const serverUser of result.users) {
+          const localUserRequest = index.get(serverUser.username);
+          
+          await new Promise((resolve) => {
+            localUserRequest.onsuccess = function() {
+              const localUser = localUserRequest.result;
+              
+              const userData = {
+                username: serverUser.username,
+                password: serverUser.password,
+                fullName: serverUser.full_name,
+                role: serverUser.role,
+                status: serverUser.status,
+                createdAt: serverUser.created_at
+              };
+              
+              if (localUser) {
+                userData.id = localUser.id;
+                store.put(userData);
+              } else {
+                store.add(userData);
+              }
+              
+              resolve();
+            };
+          });
+        }
+        
+        // Refresh UI
+        await loadUsers();
+        await loadStatistics();
+        
+        // Show notification
+        showAlert('success', '✅ New user data received!');
+      }
+    }
+  });
+  
+  console.log('✅ Real-time listeners active');
+}
+
+// ============================================
+// TRIGGER IMMEDIATE SYNC AFTER SAVING
+// Add this to your createUser function
+// ============================================
+
+async function createUser(event) {
+  event.preventDefault();
+
+  const fullName = document.getElementById('fullName').value.trim();
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  const role = document.getElementById('role').value;
+
+  if (!fullName || !username || !password || !role) {
+    showAlert('error', 'Please fill in all fields');
+    return;
+  }
+
+  if (password.length < 4) {
+    showAlert('error', 'Password must be at least 4 characters');
+    return;
+  }
+
+  try {
+    const db = await openAuthDB();
+    const transaction = db.transaction(['users'], 'readwrite');
+    const store = transaction.objectStore('users');
+    const index = store.index('username');
+    
+    const checkRequest = index.get(username);
+    
+    checkRequest.onsuccess = async function() {
+      if (checkRequest.result) {
+        showAlert('error', 'Username already exists');
+        return;
+      }
+
+      const newUser = {
+        username,
+        password,
+        fullName,
+        role,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+        createdBy: currentUser ? currentUser.userId : null
+      };
+
+      const addRequest = store.add(newUser);
+      
+      addRequest.onsuccess = async function() {
+        console.log('✅ User created locally:', newUser);
+        showAlert('success', `User "${fullName}" created successfully!`);
+        document.getElementById('createUserForm').reset();
+        
+        // Reload UI
+        await loadUsers();
+        await loadStatistics();
+        
+        // ✅ NEW: Trigger immediate sync to server
+        if (dbConnected && typeof require !== 'undefined') {
+          const { ipcRenderer } = require('electron');
+          
+          try {
+            // Upload to server
+            const result = await ipcRenderer.invoke('create-user', newUser);
+            
+            if (result.success) {
+              console.log('🚀 User synced to server immediately');
+              
+              // Trigger real-time update for other clients
+              await ipcRenderer.invoke('trigger-immediate-sync', {
+                table: 'users',
+                action: 'create'
+              });
+              
+              showAlert('success', '✅ User synced across all computers!');
+            } else {
+              console.log('⚠️ Sync to server failed:', result.message);
+            }
+          } catch (err) {
+            console.error('Sync error:', err);
+          }
+        }
+      };
+
+      addRequest.onerror = function(e) {
+        console.error('Add user error:', e);
+        showAlert('error', 'Failed to create user');
+      };
+    };
+
+    checkRequest.onerror = function(e) {
+      console.error('Check username error:', e);
+      showAlert('error', 'Error checking username');
+    };
+
+  } catch (error) {
+    console.error('Create user error:', error);
+    showAlert('error', 'An error occurred: ' + error.message);
+  }
+}
+
+
+
+if (typeof require !== 'undefined') {
+  const { ipcRenderer } = require('electron');
+  
+  console.log('📡 Setting up real-time patient update listener...');
+  
+  // Listen for data-updated events from server
+  ipcRenderer.on('data-updated', async (event, updateInfo) => {
+    console.log('📥 Real-time update received:', updateInfo);
+    
+    if (updateInfo.table === 'patients') {
+      console.log('👥 New patient data detected!');
+      
+      // Reload patients from database
+      await loadData();
+      
+      // Refresh the table if we're on patient section
+      if (currentSection === 'patient') {
+        renderPatientTable();
+        console.log('✅ Patient table refreshed with new data');
+      }
+      
+      // Optional: Show notification
+      if (updateInfo.data && updateInfo.data.length > 0) {
+        console.log(`🔔 ${updateInfo.data.length} new patient(s) received from server`);
+      }
+    }
+  });
+  
+  console.log('✅ Real-time listener active');
+}
+
+
+
+
+
+
+    // Initialize connection check on page load
+     // Initialize
+    document.addEventListener('DOMContentLoaded', async function() {
+      try {
+        console.log('🚀 Admin dashboard DOM loaded');
+        console.log('Initializing admin dashboard...');
+        
+        // Initialize auto-updater if in Electron
+        initAutoUpdater();
+        
+        // Open database first
+        await openAuthDB();
+        console.log('Database opened successfully');
+        
+        // Check authentication
+        const user = await checkAuthentication();
+        if (!user) {
+          console.log('Authentication failed, redirecting...');
+          return;
+        }
+        
+        console.log('Authentication successful, loading data...');
+        
+        // Load users and statistics
+        await loadUsers();
+        await loadStatistics();
+        
+        // Attach form submit handler
+        document.getElementById('createUserForm').addEventListener('submit', createUser);
+        
+        console.log('Admin dashboard initialized successfully');
+        
+        // ✅ NEW: Check initial connection status after everything loads
+        setTimeout(() => {
+          console.log('⏰ Running initial connection check...');
+          checkServerConnection();
+        }, 1500);
+        
+      } catch (error) {
+        console.error('Initialization error:', error);
+        alert('Failed to initialize application: ' + error.message);
+      }
+    });
     // Show alert
     function showAlert(type, message) {
       const alertId = type === 'success' ? 'successAlert' : 'errorAlert';
